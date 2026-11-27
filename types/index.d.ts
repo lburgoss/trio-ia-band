@@ -37,6 +37,9 @@ export type BandData = {
   geminiToday?: number
   /** Etiqueta del modelo elegido en agy, p. ej. «Gemini 4 Neon (High)». */
   geminiModel?: string
+  geminiModelAt?: number
+  sociosModel?: string
+  sociosModelAt?: number
   /** Hora de la última consulta enviada a Gemini. */
   geminiLastAt?: number
   /** Reinicio de la cuota: real si Google cortó (429), estimado si no. */
@@ -44,6 +47,9 @@ export type BandData = {
   geminiLimited?: boolean
   /** Cuota real de los modelos Gemini, de `agy -p /usage` (porcentaje usado). */
   geminiLimits?: CodexLimits
+  sociosLimits?: CodexLimits
+  geminiModels?: string[]
+  sociosModels?: string[]
   /** Consultas dentro de la ventana de 5 h estimada. */
   geminiWindowCount?: number
   sys?: SysSnap

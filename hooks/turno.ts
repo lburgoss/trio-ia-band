@@ -9,7 +9,7 @@ import type { Key } from './i18n'
  * - El cupo libre que se renueva pronto se pierde si no se usa: suma prioridad.
  * - Una semana casi gastada o un corte (429) bajan o anulan la prioridad.
  */
-export type Miembro = 'Claude' | 'Codex' | 'Gemini'
+export type Miembro = 'Claude' | 'Codex' | 'Gemini' | 'AGY-O'
 /** Nota de cada puesto; el texto visible sale de i18n.ts. */
 export type Nota = 'sinCupo' | 'vence' | 'semana'
 export type Puesto = {
@@ -47,10 +47,12 @@ function puesto(nombre: Miembro, cinco: Reading | undefined, semana: Reading | u
 export function turno(data: BandData): Turno {
   const { claude5, claude7, codex5, codex7 } = readings(data)
   const g = data.geminiLimits ?? {}
+  const s = data.sociosLimits ?? {}
   const puestos = [
     puesto('Claude', claude5, claude7, data.now),
     puesto('Codex', codex5, codex7, data.now),
     puesto('Gemini', g.five, g.week, data.now, !!data.geminiLimited),
+    puesto('AGY-O', s.five, s.week, data.now),
   ]
   const orden = [...puestos].sort((a, b) => b.puntaje - a.puntaje).filter(p => p.puntaje > 0).map(p => p.nombre)
   const u = claude5?.used ?? 0
@@ -68,7 +70,8 @@ const ZONA: Record<Turno['zonaClaude'], Key> = {
 const NOTA: Record<Nota, Key> = { sinCupo: 'note.sinCupo', vence: 'note.vence', semana: 'note.semana' }
 
 function fila(p: Puesto, lang: BandData['lang']): string {
-  const partes = [`${p.nombre}: 5 h ${p.usado === undefined ? t(lang, 'ctx.unknown') : t(lang, 'ctx.used', { n: Math.round(p.usado) })}`]
+  const label = p.nombre === 'Gemini' ? t(lang, 'ctx.agy') : p.nombre === 'AGY-O' ? t(lang, 'ctx.agyO') : p.nombre
+  const partes = [`${label}: 5 h ${p.usado === undefined ? t(lang, 'ctx.unknown') : t(lang, 'ctx.used', { n: Math.round(p.usado) })}`]
   if (p.renuevaMin !== undefined) {
     const time = p.renuevaMin >= 60
       ? t(lang, 'ctx.hoursMin', { h: Math.floor(p.renuevaMin / 60), m: p.renuevaMin % 60 })
@@ -83,9 +86,12 @@ function fila(p: Puesto, lang: BandData['lang']): string {
 /** Bloque que el modelo lee junto a cada mensaje del usuario (el usuario no lo ve). */
 export function contextoTurno(data: BandData): string {
   const turn = turno(data)
+  const socios = data.sociosLimits
+  const sociosAlmostOut = Math.max(socios?.five?.used ?? 0, socios?.week?.used ?? 0) >= 90
   return [
     t(data.lang, 'ctx.header'),
     ...turn.puestos.map(p => fila(p, data.lang)),
+    ...(sociosAlmostOut ? [t(data.lang, 'ctx.agyOLowQuota')] : []),
     t(data.lang, 'ctx.priority', { order: turn.orden.length ? turn.orden.join(' > ') : t(data.lang, 'ctx.nobody') }),
     t(data.lang, ZONA[turn.zonaClaude]),
   ].join('\n')

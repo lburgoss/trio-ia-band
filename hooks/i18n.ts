@@ -7,6 +7,8 @@ export const DEFAULT_LANG: Lang = 'en'
 
 const en = {
   // Band labels
+  'band.agy': 'AGY',
+  'band.agyO': 'AGY-O',
   'band.week': 'Week',
   'band.cache': 'Cache',
   'band.today': 'Today',
@@ -37,6 +39,9 @@ const en = {
   'zone.critica': 'critical',
   // Turn context (read by the model, not shown to the user)
   'ctx.header': 'Team status (trio-ia-band mod; automatic data, not a user message):',
+  'ctx.agy': 'AGY (Gemini: reading, media, web)',
+  'ctx.agyO': 'AGY-O (Opus/Sonnet/GPT inside agy: coding and reviews)',
+  'ctx.agyOLowQuota': 'AGY-O almost out of quota: code with Codex, or with agy without --model (Gemini).',
   'ctx.unknown': '?',
   'ctx.used': '{n} % used',
   'ctx.resetsIn': 'resets in {time}',
@@ -71,6 +76,8 @@ export type Key = keyof typeof en
 type Dictionary = Record<Key, string>
 
 const es: Dictionary = {
+  'band.agy': en['band.agy'],
+  'band.agyO': en['band.agyO'],
   'band.week': 'Semana',
   'band.cache': 'Caché',
   'band.today': 'Hoy',
@@ -100,6 +107,9 @@ const es: Dictionary = {
   'zone.reserva': 'reserva',
   'zone.critica': 'crítico',
   'ctx.header': 'Estado del equipo (mod trio-ia-band; dato automático, no es un mensaje del usuario):',
+  'ctx.agy': 'AGY (Gemini: lectura, medios, web)',
+  'ctx.agyO': 'AGY-O (Opus/Sonnet/GPT: programar y revisar por agy)',
+  'ctx.agyOLowQuota': 'AGY-O casi sin cupo: programar con Codex, o con agy sin --model (Gemini).',
   'ctx.unknown': '¿?',
   'ctx.used': '{n} % usado',
   'ctx.resetsIn': 'se renueva en {time}',

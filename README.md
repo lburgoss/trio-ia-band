@@ -29,7 +29,7 @@
 
 ## Why
 
-If you use Claude Code to orchestrate and hand work to Codex and Gemini, Claude is the bottleneck. When its 5-hour window reaches 100 %, nobody coordinates, even if the other two are barely used. This band shows all three at once and tells Claude, with every message, who should get the work.
+If you use Claude Code to orchestrate and hand work to Codex and Gemini, Claude is the bottleneck. When its 5-hour window reaches 100 %, nobody coordinates, even if the other two are barely used. This band shows Claude, Codex and both Antigravity quotas at once and tells Claude, with every message, who should get the work.
 
 ## What it looks like
 
@@ -55,10 +55,13 @@ If you use Claude Code to orchestrate and hand work to Codex and Gemini, Claude 
 |---|---|
 | **CLAUDE** | Model, whether it is working (●), 5-hour and weekly usage with reset time, and estimated prompt-cache minutes left. |
 | **CODEX** | Model, usage of each limit with reset time, and today's tokens. Reads local logs in `~/.codex/sessions` (or `CODEX_HOME`). Green ● working, grey ● open, ○ closed. |
-| **GEMINI** | Model selected in Antigravity, 5-hour and weekly usage, read from `agy -p /usage` every 2 minutes (the query uses no quota). Without a signed-in session it estimates from the log (≈). |
+| **AGY** | Antigravity's Gemini group. Shows the last Gemini model used and the group's 5-hour and weekly usage. Falls back to a log estimate (≈) when quota readings are unavailable. |
+| **AGY-O** | Antigravity's Claude and GPT group. Shows the last model used in that group (such as Opus, Sonnet or GPT) and its 5-hour and weekly usage. |
 | **Active** | Main model and grouped subagents, plus RAM and the memory used by Claude, Codex and Gemini. |
 | **Turn** | Recommended order for new work right now, and Claude's zone: normal, delegate all, reserve or critical. |
 | **Background** | One line per subagent with model and task. Up to 4 lines, then "+N more". |
+
+Models within each Antigravity group share the same quota. The band reads both groups with `agy -p /usage` every two minutes (the query uses no quota). Wide layouts dim the model list for each group.
 
 Bars go from green to amber to red near the limit. It warns once per threshold, at 80 % and 95 %, even with the band hidden.
 
@@ -101,7 +104,7 @@ claude plugin install trio-ia-band --marketplace lburgoss/trio-ia-band
 
 In the desktop app: **+** next to the prompt → **Plugins** → **Add marketplace** with `lburgoss/trio-ia-band` → **Add plugin**.
 
-**Optional, for the Codex and Gemini rows:**
+**Optional, for the Codex, AGY and AGY-O rows:**
 
 - [Codex CLI](https://github.com/openai/codex), signed in. The band only reads its local logs.
 - Antigravity CLI (`agy`), signed in. On Windows it is looked up at `%LOCALAPPDATA%\agy\bin\agy.exe`; elsewhere, `agy` on the `PATH`.

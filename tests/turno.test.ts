@@ -25,18 +25,39 @@ test('el cupo que vence pronto va primero', () => {
 test('el bloque de turno sale en inglés por defecto y en español con lang es', () => {
   const en = contextoTurno(base(20, 30, 40, 15))
   expect(en.split('\n')[0]).toBe('Team status (trio-ia-band mod; automatic data, not a user message):')
-  expect(en).toContain('Gemini: 5 h 40 % used · resets in 15 min · score 105 (quota about to reset: use it first)')
-  expect(en).toContain('Priority for new work now: Gemini > Codex > Claude.')
+  expect(en).toContain('AGY (Gemini: reading, media, web): 5 h 40 % used · resets in 15 min · score 105 (quota about to reset: use it first)')
+  expect(en).toContain('Priority for new work now: Gemini > Codex > Claude > AGY-O.')
   expect(en).toContain('Claude < 50 %: normal split')
   expect(en).not.toMatch(/Estado del equipo|Prioridad|puntaje|usado/)
   const es = contextoTurno({ ...base(20, 30, 40, 15), lang: 'es' })
   expect(es.split('\n')[0]).toContain('Estado del equipo')
   expect(es).toContain('Claude: 5 h 20 % usado · se renueva en 2 h 0 min')
-  expect(es).toContain('Prioridad para dar trabajo ahora: Gemini > Codex > Claude.')
-  expect(contextoTurno({ ...base(99, 99, 99), geminiLimited: true })).toContain('nobody has quota: tell the user')
+  expect(es).toContain('Prioridad para dar trabajo ahora: Gemini > Codex > Claude > AGY-O.')
+  expect(contextoTurno({ ...base(99, 99, 99), geminiLimited: true, sociosLimits: { five: { used: 99, at: now } } })).toContain('nobody has quota: tell the user')
 })
 
 test('un corte de Gemini lo saca del reparto', () => {
   const t = turno({ ...base(20, 30, 10), geminiLimited: true })
   expect(t.orden).not.toContain('Gemini')
+})
+
+test('puntúa a AGY-O y avisa al alcanzar el 90 % en cualquiera de sus ventanas', () => {
+  const d = base(20, 30, 40)
+  const nota = 'AGY-O casi sin cupo: programar con Codex, o con agy sin --model (Gemini).'
+  expect(contextoTurno(d)).not.toContain(nota)
+  for (const [five, week, score] of [[90, 40, 10], [40, 90, 18]] as const) {
+    const data = { ...d, sociosLimits: {
+      five: { used: five, at: now, resetsAt: now + 120 * 60_000 },
+      week: { used: week, at: now },
+    } }
+    expect(turno(data).puestos.find(p => p.nombre === 'AGY-O')?.puntaje).toBe(score)
+    const context = contextoTurno({ ...data, lang: 'es' })
+    expect(context).toContain('AGY (Gemini: lectura, medios, web): 5 h 40 % usado')
+    expect(context).toContain(`AGY-O (Opus/Sonnet/GPT: programar y revisar por agy): 5 h ${five} % usado · se renueva en 2 h 0 min · semana ${week} % · puntaje ${score}`)
+    expect(context).toContain(nota)
+    const en = contextoTurno(data)
+    expect(en).toContain('AGY (Gemini: reading, media, web): 5 h 40 % used')
+    expect(en).toContain(`AGY-O (Opus/Sonnet/GPT inside agy: coding and reviews): 5 h ${five} % used · resets in 2 h 0 min · week ${week} % · score ${score}`)
+    expect(en).toContain('AGY-O almost out of quota: code with Codex, or with agy without --model (Gemini).')
+  }
 })

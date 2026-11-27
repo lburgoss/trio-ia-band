@@ -71,9 +71,10 @@ function codexState(data: BandData): Segment {
   return data.sys?.codex?.count ? { text: DOT, color: GREY } : { text: OFF, color: GREY }
 }
 
-// Gemini (Antigravity CLI): green while it writes its log, grey ● while agy is open, grey ○ otherwise.
-function geminiState(data: BandData): Segment {
-  if (data.geminiModifiedAt !== undefined && data.now - data.geminiModifiedAt < 30_000) return { text: DOT, color: GREEN }
+// AGY shows activity for each group while its model selection and the log write are recent.
+function agyState(data: BandData, modelAt: number | undefined): Segment {
+  if (modelAt !== undefined && data.now - modelAt >= 0 && data.now - modelAt < 30_000
+      && data.geminiModifiedAt !== undefined && data.now - data.geminiModifiedAt < 30_000) return { text: DOT, color: GREEN }
   return data.sys?.gemini?.count ? { text: DOT, color: GREY } : { text: OFF, color: GREY }
 }
 
@@ -165,7 +166,11 @@ type AgentRow = NonNullable<BandData['agents']>[number]
 export function agentLabel(agent: AgentRow, data: BandData): string {
   const own = agent.model ? safeModel(modelName(agent.model)) : t(data.lang, 'band.modelPendingInline')
   const type = (agent.type ?? '').toLowerCase()
-  if (type === 'gemini') return t(data.lang, 'band.via', { agent: `Gemini ${geminiModelName(data.geminiModel)}`, model: own })
+  if (type === 'gemini') {
+    const model = data.sociosModel && (data.sociosModelAt ?? -Infinity) > (data.geminiModelAt ?? -Infinity)
+      ? data.sociosModel : geminiModelName(data.geminiModel)
+    return t(data.lang, 'band.via', { agent: `${t(data.lang, 'band.agy')} ${model}`, model: own })
+  }
   if (type.startsWith('codex')) {
     return t(data.lang, 'band.via', { agent: `Codex ${data.codexModel?.replace(/^gpt-/i, 'GPT-') ?? ''}`.trimEnd(), model: own })
   }
@@ -211,12 +216,14 @@ export function bandRows(data: BandData, columns: number): Field[] {
   const noCodex = !codex5 && !codex7 && data.codexToday === undefined && !codexModel
   const claudeTitle = { text: 'CLAUDE', color: '#D97757', bold: true }
   const codexTitle = { text: 'CODEX ', color: '#10A37F', bold: true }
-  const geminiTitle = { text: 'GEMINI', color: '#4285F4', bold: true }
+  const geminiTitle = { text: t(data.lang, 'band.agy').padEnd(6), color: '#4285F4', bold: true }
+  const sociosTitle = [{ text: t(data.lang, 'band.agyO'), color: '#4285F4', bold: true }, { text: ' ' }]
   // Real quota from `agy -p /usage` when it answered; otherwise the old log estimate.
   const { five: gemini5, week: gemini7 } = data.geminiLimits ?? {}
+  const { five: socios5, week: socios7 } = data.sociosLimits ?? {}
   const geminiReal = !!(gemini5 || gemini7)
 
-  // Each layout sheds detail while keeping the fields shared by both rows aligned.
+  // Each layout sheds detail while keeping the fields shared by the four rows aligned.
   const layouts = [
     'extras resets week bars model five state empty',
     'resets week bars model five state empty',
@@ -232,27 +239,28 @@ export function bandRows(data: BandData, columns: number): Field[] {
   for (const layout of layouts) {
     const fields = layout.split(' ')
     const show = (field: string) => fields.includes(field)
-    // One column per window, padded to the widest of the three rows so the bars line up.
+    // One column per window, padded to the widest of the four rows so the bars line up.
     const slot = (title: string, ...readings: (Reading | undefined)[]): Field[] => {
       const fields = readings.map(r => quota(title, r, data.now, show('resets'), show('bars')))
       const width = Math.max(...fields.map(widthOf))
       return fields.map(field => [...field, { text: ' '.repeat(width - widthOf(field)) }])
     }
-    const [a5 = [], b5 = [], g5 = []] = show('five') ? slot('5 h', claude5, codex5, gemini5) : [[], [], []]
-    const [a7 = [], b7 = [], g7 = []] = show('week') ? slot(t(data.lang, 'band.week'), claude7, codex7, gemini7) : [[], [], []]
-    const prefix = (title: Segment, model: string, status: Segment) => [
+    const [a5 = [], b5 = [], g5 = [], s5 = []] = show('five') ? slot('5 h', claude5, codex5, gemini5, socios5) : []
+    const [a7 = [], b7 = [], g7 = [], s7 = []] = show('week') ? slot(t(data.lang, 'band.week'), claude7, codex7, gemini7, socios7) : []
+    const prefix = (title: Field, model: string, status: Segment) => [
       // The dot sits right before the model it describes: "CLAUDE  ● Opus 5.5".
-      [title], [...(show('state') ? [status, { text: ' ' }] : []), ...(show('model') ? modelField(model) : [])],
+      title, [...(show('state') ? [status, { text: ' ' }] : []), ...(show('model') ? modelField(model) : [])],
     ]
-    const claude = trimRow(join([...prefix(claudeTitle, modelName(data.model), claudeState), a5, a7,
+    const claude = trimRow(join([...prefix([claudeTitle], modelName(data.model), claudeState), a5, a7,
       ...(show('extras') ? [[dim(label(t(data.lang, 'band.cache'))), cache(data, claude5, claude7)]] : []),
     ]))
-    const codex = trimRow(join([...prefix(codexTitle, codexModel ?? '—', codexState(data)),
+    const codex = trimRow(join([...prefix([codexTitle], codexModel ?? '—', codexState(data)),
       ...(noCodex ? (show('empty') ? [[dim(t(data.lang, 'band.noData'))]] : []) : [b5, b7]),
       ...(show('extras') && data.codexToday !== undefined
         ? [[dim(label(t(data.lang, 'band.today'))), { text: tokenText(data.codexToday, data.lang) }]] : []),
     ]))
-    const gemini = trimRow(join([...prefix(geminiTitle, geminiModelName(data.geminiModel), geminiState(data)),
+    const geminiAt = data.geminiModelAt ?? (data.sociosModelAt === undefined ? data.geminiModifiedAt : undefined)
+    const gemini = trimRow(join([...prefix([geminiTitle], geminiModelName(data.geminiModel), agyState(data, geminiAt)),
       ...(geminiReal
         ? [g5!, g7!, ...(data.geminiLimited ? [[{ text: t(data.lang, 'band.limit'), color: RED, bold: true }]] : []),
           ...(show('extras') ? [geminiToday(data)] : [])]
@@ -260,8 +268,18 @@ export function bandRows(data: BandData, columns: number): Field[] {
       ...(show('extras') && data.geminiLastAt !== undefined
         ? [[dim(label(t(data.lang, 'band.last'))), { text: agoText(data.geminiLastAt, data.now, data.lang) }]] : []),
     ]))
-    if (widthOf(claude) <= columns && widthOf(codex) <= columns && widthOf(gemini) <= columns) {
-      return [claude, codex, gemini, activeRow(data, columns), turnoRow(data, columns), ...agentRows(data, columns)].filter(row => row.length)
+    const socios = trimRow(join([...prefix(sociosTitle, data.sociosModel ?? '—', agyState(data, data.sociosModelAt)),
+      ...(socios5 || socios7 ? [s5, s7] : show('empty') ? [[dim(t(data.lang, 'band.noData'))]] : []),
+    ]))
+    const rows = [claude, codex, gemini, socios]
+    if (rows.every(row => widthOf(row) <= columns)) {
+      if (show('extras')) {
+        for (const [row, models] of [[gemini, data.geminiModels], [socios, data.sociosModels]] as const) {
+          const room = columns - widthOf(row) - GAP.length
+          if (room > 0 && models?.length) row.push({ text: GAP }, dim(room === 1 ? '…' : clip(models.join('·'), room)))
+        }
+      }
+      return [...rows, activeRow(data, columns), turnoRow(data, columns), ...agentRows(data, columns)].filter(row => row.length)
     }
   }
   return []

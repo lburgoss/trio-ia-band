@@ -7,7 +7,7 @@ import { tokensOf } from './lib/kz'
 import { MAC_MEMSIZE, MAC_TOP, POSIX_PROCESSES, WIN_SYS, parseMacTop, parseMeminfo, parseProcessMemory, parseWinSys, platformFrom } from './lib/probe'
 import type { Platform } from './lib/probe'
 import { LIMIT_STORE, updateLimits } from './limits'
-import { geminiWindow, parseGeminiLog, parseGeminiUsage, yearOfLog } from './gemini'
+import { geminiWindow, parseAgyUsage, parseGeminiLog, sociosModelName, yearOfLog } from './gemini'
 import type { GeminiLog } from './gemini'
 import { isLang, t } from './i18n'
 import type { Lang } from './i18n'
@@ -220,17 +220,22 @@ async function refreshGemini($: EngineInterface, now: number) {
   const start = new Date(now)
   start.setHours(0, 0, 0, 0)
   const requests: number[] = []
-  let model: GeminiLog['model']
+  let geminiModel: GeminiLog['geminiModel']
+  let sociosModel: GeminiLog['sociosModel']
   let limit: GeminiLog['limit']
   for (const { parsed } of geminiLogs.values()) {
     requests.push(...parsed.requests)
-    if (parsed.model && parsed.model.at >= (model?.at ?? -Infinity)) model = parsed.model
+    if (parsed.geminiModel && parsed.geminiModel.at >= (geminiModel?.at ?? -Infinity)) geminiModel = parsed.geminiModel
+    if (parsed.sociosModel && parsed.sociosModel.at >= (sociosModel?.at ?? -Infinity)) sociosModel = parsed.sociosModel
     if (parsed.limit && parsed.limit.at >= (limit?.at ?? -Infinity)) limit = parsed.limit
   }
   const window = geminiWindow(requests, now)
   live.geminiToday = requests.filter(at => at >= start.getTime()).length
   live.geminiLastAt = requests.length ? Math.max(...requests) : undefined
-  live.geminiModel = model?.value
+  live.geminiModel = geminiModel?.value
+  live.geminiModelAt = geminiModel?.at
+  live.sociosModel = sociosModel && sociosModelName(sociosModel.value)
+  live.sociosModelAt = sociosModel?.at
   live.geminiWindowCount = window.count
   // Un corte real (429) manda sobre la estimación mientras siga vigente.
   live.geminiLimited = !!limit && limit.resetsAt > now
@@ -243,10 +248,21 @@ async function refreshGeminiUsage($: EngineInterface, now: number) {
   const agy = local ? `${local.replace(/\\/g, '/')}/agy/bin/agy.exe` : 'agy'
   // --log-file al vacío: sin él cada consulta dejaría un registro nuevo en antigravity-cli/log.
   const out = await sh($, [agy, '-p', '/usage', '--output-format', 'json', '--log-file', win ? 'NUL' : '/dev/null'], 20_000)
-  const limits = out === undefined ? undefined : parseGeminiUsage(out, now)
-  if (limits) live.geminiLimits = limits
-  // Una lectura de más de 15 min ya no vale: la banda vuelve a la estimación.
-  else if (live.geminiLimits && now - Math.max(live.geminiLimits.five?.at ?? 0, live.geminiLimits.week?.at ?? 0) > 15 * 60_000) live.geminiLimits = undefined
+  const usage = out === undefined ? {} : parseAgyUsage(out, now)
+  for (const group of ['gemini', 'socios'] as const) {
+    const incoming = usage[group]
+    const limitsKey = `${group}Limits` as const
+    const modelsKey = `${group}Models` as const
+    const previous = live[limitsKey]
+    if (incoming?.five || incoming?.week) {
+      const { five, week } = incoming
+      live[limitsKey] = { five, week }
+    } else if (previous && now - Math.max(previous.five?.at ?? 0, previous.week?.at ?? 0) > 15 * 60_000) {
+      live[limitsKey] = undefined
+      live[modelsKey] = undefined
+    }
+    if (incoming) live[modelsKey] = incoming.models
+  }
 }
 
 function redraw($: EngineInterface) {

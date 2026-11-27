@@ -9,6 +9,8 @@ export const GEMINI_WINDOW_HOURS = 5
 
 export type GeminiLog = {
   model?: { value: string; at: number }
+  geminiModel?: { value: string; at: number }
+  sociosModel?: { value: string; at: number }
   /** Hora de cada consulta del usuario (agy -p o un mensaje en la sesión). */
   requests: number[]
   /** El último corte 429: a qué hora se reinicia y cuándo se registró. */
@@ -35,21 +37,26 @@ export function goDuration(text: string): number | undefined {
 
 // glog: «I1126 19:26:47.087462 …», hora local sin año.
 function stamp(line: string, year: number): number | undefined {
-  const m = /^[IWEF](\d{2})(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(line)
+  const m = /^[IWEF](\d{2})(\d{2}) (\d{2}):(\d{2}):(\d{2})(\.\d+)?/.exec(line)
   if (!m) return undefined
-  const [, mo, d, h, mi, s] = m.map(Number) as number[]
-  return new Date(year, mo! - 1, d, h, mi, s).getTime()
+  const [, mo, d, h, mi, s, fraction] = m.map(Number) as number[]
+  return new Date(year, mo! - 1, d, h, mi, s).getTime() + 1000 * (fraction || 0)
 }
 
 export function parseGeminiLog(text: string, year: number): GeminiLog {
   const out: GeminiLog = { requests: [] }
   for (const line of text.split('\n')) {
-    const at = stamp(line, year)
-    if (at === undefined) continue
+    const modelAt = stamp(line, year)
+    if (modelAt === undefined) continue
+    const at = Math.floor(modelAt / 1000) * 1000
     // «Print mode: starting» precede al mismo mensaje en agy -p: contarlo duplicaría.
     if (line.includes('Sending user message')) out.requests.push(at)
     const label = /selected model override to backend: label="([^"]+)"/.exec(line)?.[1]
-    if (label && at >= (out.model?.at ?? -Infinity)) out.model = { value: label, at }
+    if (label) {
+      const key = /claude|gpt|opus|sonnet/i.test(label) ? 'sociosModel' : 'geminiModel'
+      if (modelAt >= (out[key]?.at ?? -Infinity)) out[key] = { value: label, at: modelAt }
+      if (modelAt >= (out.model?.at ?? -Infinity)) out.model = { value: label, at: modelAt }
+    }
     const reset = /quota will reset after ([0-9.hms]+)/.exec(line)?.[1]
     const wait = reset ? goDuration(reset) : undefined
     if (wait !== undefined && at >= (out.limit?.at ?? -Infinity)) out.limit = { resetsAt: at + wait, at }
@@ -59,35 +66,59 @@ export function parseGeminiLog(text: string, year: number): GeminiLog {
 
 /**
  * `agy -p /usage --output-format json`: la misma cuota que muestra la web de
- * Antigravity (pestaña Modelos). Toma el grupo de los modelos Gemini y pasa
+ * Antigravity (pestaña Modelos). Lee ambos grupos y pasa
  * «lo que queda» a «lo usado», como las lecturas de Claude y Codex.
  */
-export function parseGeminiUsage(text: string, at: number): CodexLimits | undefined {
+export type AgyGroup = CodexLimits & { models: string[] }
+type AgyUsage = { gemini?: AgyGroup; socios?: AgyGroup }
+
+export function parseAgyUsage(text: string, at: number): AgyUsage {
+  const usage: AgyUsage = {}
   let json: unknown
   try {
     json = JSON.parse(text.slice(text.indexOf('{')))
   } catch {
-    return undefined
+    return usage
   }
   const groups = (json as { command?: { data?: { groups?: unknown } } })?.command?.data?.groups
-  if (!Array.isArray(groups)) return undefined
+  if (!Array.isArray(groups)) return usage
   type Bucket = { id?: string; window?: string; remaining_fraction?: number; reset_time?: string }
-  const group = groups.find((g: { name?: string; buckets?: Bucket[] }) =>
-    /gemini/i.test(g?.name ?? '') || g?.buckets?.some(b => /^gemini-/.test(b?.id ?? '')))
-  if (!Array.isArray(group?.buckets)) return undefined
-  const out: CodexLimits = {}
-  for (const b of group.buckets as Bucket[]) {
-    const key = b.window === '5h' ? 'five' : b.window === 'weekly' ? 'week' : undefined
-    if (!key || typeof b.remaining_fraction !== 'number' || !Number.isFinite(b.remaining_fraction)) continue
-    const reset = b.reset_time ? Date.parse(b.reset_time) : NaN
-    out[key] = {
-      used: Math.max(0, Math.min(100, (1 - b.remaining_fraction) * 100)),
-      // Sin uso, Google devuelve 1970-01-01: no hay reinicio que mostrar.
-      resetsAt: Number.isFinite(reset) && reset > 0 ? reset : undefined,
-      at,
+  for (const group of groups as ({ name?: string; description?: string; buckets?: Bucket[] } | null)[]) {
+    if (!group) continue
+    const buckets = Array.isArray(group.buckets) ? group.buckets : []
+    const kind = /gemini/i.test(group.name ?? '') || buckets.some(b => /^gemini-/.test(b?.id ?? '')) ? 'gemini'
+      : /claude|gpt/i.test(group.name ?? '') || buckets.some(b => /^3p-/.test(b?.id ?? '')) ? 'socios' : undefined
+    if (!kind || usage[kind]) continue
+    const description = typeof group.description === 'string' ? group.description : ''
+    const names = /Models within this group:\s*(.*)/i.exec(description)?.[1] ?? ''
+    const out: AgyGroup = {
+      models: names.split(',').map(name => name.trim())
+        .filter(name => name && !/^orchestrator\b/i.test(name))
+        .map(kind === 'gemini' ? geminiModelName : sociosModelName),
     }
+    for (const b of buckets) {
+      const key = b?.window === '5h' ? 'five' : b?.window === 'weekly' ? 'week' : undefined
+      if (!key || typeof b.remaining_fraction !== 'number' || !Number.isFinite(b.remaining_fraction)) continue
+      const reset = b.reset_time ? Date.parse(b.reset_time) : NaN
+      out[key] = {
+        used: Math.max(0, Math.min(100, (1 - b.remaining_fraction) * 100)),
+        // Sin uso, Google devuelve 1970-01-01: no hay reinicio que mostrar.
+        resetsAt: Number.isFinite(reset) && reset > 0 ? reset : undefined,
+        at,
+      }
+    }
+    usage[kind] = out
   }
-  return out.five || out.week ? out : undefined
+  return usage
+}
+
+export function parseGeminiUsage(text: string, at: number): CodexLimits | undefined {
+  const { five, week } = parseAgyUsage(text, at).gemini ?? {}
+  return five || week ? { ...(five && { five }), ...(week && { week }) } : undefined
+}
+
+export function sociosModelName(label: string): string {
+  return label.replace(/^claude\s+/i, '').replace(/[()]/g, '').replace(/\s+/g, ' ').trim()
 }
 
 /** «Gemini 4 Neon (High)» → «4 Neon High». */

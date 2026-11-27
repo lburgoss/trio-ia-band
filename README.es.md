@@ -28,7 +28,7 @@
 
 ## Por qué
 
-Si usas Claude Code para dirigir y le pasas trabajo a Codex y a Gemini, Claude es el cuello de botella. Cuando su ventana de 5 horas llega al 100 %, nadie coordina, aunque los otros dos estén casi sin usar. Esta banda muestra los tres a la vez y le dice a Claude, en cada mensaje, a quién darle trabajo.
+Si usas Claude Code para dirigir y le pasas trabajo a Codex y a Gemini, Claude es el cuello de botella. Cuando su ventana de 5 horas llega al 100 %, nadie coordina, aunque los otros dos estén casi sin usar. Esta banda muestra Claude, Codex y los dos cupos de Antigravity a la vez y le dice a Claude, en cada mensaje, a quién darle trabajo.
 
 ## Cómo se ve
 
@@ -54,10 +54,13 @@ Si usas Claude Code para dirigir y le pasas trabajo a Codex y a Gemini, Claude e
 |---|---|
 | **CLAUDE** | Modelo, si está trabajando (●), % usado de 5 h y de la semana con su reinicio, y minutos estimados de caché de prompts. |
 | **CODEX** | Modelo, % usado de cada límite con su reinicio y tokens de hoy. Lee los registros locales de `~/.codex/sessions` (o `CODEX_HOME`). ● verde trabajando, ● gris abierto, ○ cerrado. |
-| **GEMINI** | Modelo elegido en Antigravity y % usado de 5 h y semana, que pide a `agy -p /usage` cada 2 minutos (la consulta no gasta cuota). Sin sesión iniciada, lo estima por el registro (≈). |
+| **AGY** | Grupo Gemini de Antigravity. Muestra el último modelo Gemini usado y el consumo del grupo en 5 h y en la semana. Si falta la lectura del cupo, usa una estimación del registro (≈). |
+| **AGY-O** | Grupo Claude y GPT de Antigravity. Muestra el último modelo usado en ese grupo (por ejemplo, Opus, Sonnet o GPT) y su consumo en 5 h y en la semana. |
 | **Activos** | Modelo principal y subagentes agrupados, más RAM y memoria de Claude, Codex y Gemini. |
 | **Turno** | Orden recomendado para dar trabajo ahora y zona de Claude: normal, delegar todo, reserva o crítico. |
 | **2º plano** | Una línea por subagente con modelo y tarea. Hasta 4 líneas y luego «+N más». |
+
+Los modelos de cada grupo de Antigravity comparten el mismo cupo. La banda consulta ambos grupos con `agy -p /usage` cada dos minutos (la consulta no gasta cuota). Si hay espacio, muestra en gris la lista de modelos de cada grupo.
 
 Las barras pasan de verde a ámbar y rojo cerca del límite. Avisa una vez por umbral, al 80 % y al 95 %, aunque la banda esté oculta.
 
@@ -100,7 +103,7 @@ claude plugin install trio-ia-band --marketplace lburgoss/trio-ia-band
 
 En la app de escritorio: **+** junto al prompt → **Plugins** → **Add marketplace** con `lburgoss/trio-ia-band` → **Add plugin**.
 
-**Opcional, para las filas de Codex y Gemini:**
+**Opcional, para las filas de Codex, AGY y AGY-O:**
 
 - [Codex CLI](https://github.com/openai/codex) con sesión iniciada. La banda solo lee sus registros locales.
 - Antigravity CLI (`agy`) con sesión iniciada. En Windows se busca en `%LOCALAPPDATA%\agy\bin\agy.exe`; en otros sistemas, `agy` en el `PATH`.

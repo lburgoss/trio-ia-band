@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0 (2026-11-27)
+- Antigravity now shows two quota rows, AGY for Gemini and AGY-O for Claude and GPT. Each row shows its last used model and aligned 5-hour and weekly limits. Wide layouts list the models that share each quota.
+- Turn scoring includes AGY-O and suggests using Codex or Gemini when either AGY-O window reaches 90 %.
+
 ## 1.2.0 (2026-11-26)
 - English by default; the band adapts to the user's language (Claude Code `language` setting, `LANG`, Windows culture). `language` option: `auto`, `en`, `es`.
 - `/team-band` command (`/estado` kept as the Spanish alias).

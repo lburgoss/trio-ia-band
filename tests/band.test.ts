@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { bandRows } from '../hooks/band'
+import { agentLabel, bandRows } from '../hooks/band'
 import type { BandData } from '../types'
 
 const now = new Date(2030, 0, 7, 5, 50).getTime()
@@ -64,9 +64,10 @@ test('agrupa agentes y reduce filas sin superar el ancho disponible', () => {
   expect(active).toContain('● Opus 5.5  ● Haiku 5.5 ×2')
   expect(active.endsWith('RAM 62 %  Claude 1,1 GB  Codex 640 MB')).toBe(true)
   const narrow = bandRows(d, 63).map(line)
-  expect(narrow).toHaveLength(4)
-  expect(narrow[3]).toContain('Turno')
-  expect(narrow[2]).toContain('GEMINI')
+  expect(narrow).toHaveLength(5)
+  expect(narrow[4]).toContain('Turno')
+  expect(narrow[2]).toContain('AGY')
+  expect(narrow[3]).toContain('AGY-O')
   expect(narrow[0]).toContain('5 h')
   expect(narrow[0]).not.toContain('Semana')
   expect(narrow[1]).toContain('5 %')
@@ -84,15 +85,15 @@ test('distingue un Codex activo, abierto o inactivo aunque aún falten lecturas'
   expect(status({ now, limits: [] })).toEqual({ text: '○', color: '#8B949E' })
 })
 
-test('muestra la fila GEMINI en azul con su estado y las consultas de hoy', () => {
+test('muestra la fila AGY en azul con su estado y las consultas de hoy', () => {
   const activo = bandRows({ ...data(), geminiModifiedAt: now - 5_000, geminiToday: 3 }, 180)
-  const gemini = activo.find(row => row[0]?.text === 'GEMINI') ?? []
-  expect(gemini[0]).toEqual({ text: 'GEMINI', bold: true, color: '#4285F4' })
+  const gemini = activo[2] ?? []
+  expect(gemini[0]).toEqual({ text: 'AGY   ', bold: true, color: '#4285F4' })
   expect(gemini.find(s => s.text === '●')?.color).toBe('#3FB950')
   expect(line(gemini)).toContain('Antigravity')
   expect(line(gemini)).toContain('Hoy 3 consultas')
   const quieto = bandRows({ ...data(), geminiModifiedAt: now - 120_000, geminiToday: 0 }, 180)
-  const fila = quieto.find(row => row[0]?.text === 'GEMINI') ?? []
+  const fila = quieto[2] ?? []
   expect(fila.find(s => s.text === '○')?.color).toBe('#8B949E')
   expect(line(fila)).toContain('sin uso hoy')
 })
@@ -111,7 +112,7 @@ test('lista cada subagente con su modelo, su tarea y el puente a Gemini o Codex'
   const rows = bandRows(d, 180).map(line).filter(l => l.startsWith('2º plano'))
   expect(rows).toHaveLength(3)
   expect(rows[0]).toContain('● Sonnet 5.5  Revisión de diseño')
-  expect(rows[1]).toContain('Gemini 4 Neon High (vía Haiku 5.5)')
+  expect(rows[1]).toContain('AGY 4 Neon High (vía Haiku 5.5)')
   expect(rows[2]).toContain('Codex GPT-5.5 (vía Sonnet 5.5)')
   const many = { ...d, agents: [...d.agents, ...d.agents] }
   expect(bandRows(many, 180).map(line).at(-1)).toContain('+3 más')
@@ -144,7 +145,7 @@ test('habla inglés por defecto, con punto decimal, sin pasarse del ancho', () =
   const background = rows.filter(row => row.startsWith('Background '))
   expect(background).toHaveLength(2)
   expect(background[0]).toContain('● Sonnet 5.5  Design review')
-  expect(background[1]).toContain('Gemini Antigravity (via Haiku 5.5)')
+  expect(background[1]).toContain('AGY Antigravity (via Haiku 5.5)')
   expect(rows.join('\n')).not.toMatch(/Semana|Caché|Hoy|Última|Activos|Turno|2º plano|vía|vencida/)
   expect(line(bandRows({ ...d, codexToday: 1_234_567 }, 180)[1])).toContain('1.2 M tokens')
   expect(line(bandRows({ ...d, codexToday: 1_234_567, lang: 'es' }, 180)[1])).toContain('1,2 M tokens')
@@ -153,5 +154,48 @@ test('habla inglés por defecto, con punto decimal, sin pasarse del ancho', () =
   expect(bandRows(many, 180).map(line).at(-1)).toBe('Background +3 more')
   for (let columns = 1; columns <= 180; columns++) {
     expect(bandRows(many, columns).every(row => line(row).length <= columns)).toBe(true)
+  }
+})
+
+test('alinea las cuotas de las cuatro filas y pinta AGY-O en azul', () => {
+  const d: BandData = {
+    ...data(), geminiModel: 'Gemini 4 Neon (High)', geminiModelAt: now - 31_000,
+    geminiModifiedAt: now - 1_000, sociosModelAt: now - 29_999, sociosModel: 'Opus 5.5 High',
+    geminiLimits: { five: { used: 8.1, at: now }, week: { used: 2.03, at: now } },
+    sociosLimits: { five: { used: 93.71, at: now, resetsAt: now + 10 * 60_000 }, week: { used: 46.86, at: now } },
+    geminiModels: ['4 Neon', '4 Carbon', '4 Argon', '4 Hydrogen', '3.8 Flash'],
+    sociosModels: ['Opus 5.5', 'Sonnet 5.5', 'GPT-OSS 120B'],
+  }
+  const rows = bandRows(d, 180).slice(0, 4)
+  const socios = rows[3] ?? []
+  expect(socios.slice(0, 2)).toEqual([
+    { text: 'AGY-O', color: '#4285F4', bold: true },
+    { text: ' ' },
+  ])
+  expect(socios.find(s => s.text === '●')?.color).toBe('#3FB950')
+  expect(bandRows({ ...d, sociosModelAt: now - 30_000 }, 180)[3]?.[3]?.color).toBe('#8B949E')
+  expect(bandRows({ ...d, geminiModifiedAt: undefined }, 180)[3]?.[3]?.color).toBe('#8B949E')
+  expect(line(socios)).toContain('94 %')
+  expect(line(socios)).toContain('47 %')
+  for (const [lang, week] of [['en', 'Week'], ['es', 'Semana']] as const) {
+    const localized = bandRows({ ...d, lang }, 180).slice(0, 4).map(line)
+    expect(localized.map(row => row.slice(0, 6).trimEnd())).toEqual(['CLAUDE', 'CODEX', 'AGY', 'AGY-O'])
+    for (const title of ['5 h', week]) {
+      const offsets = localized.map(row => row.indexOf(title))
+      expect(offsets[0]! > 0).toBe(true)
+      expect(offsets).toEqual(Array(4).fill(offsets[0]))
+    }
+  }
+  expect(rows[2]?.at(-1)).toEqual({ text: d.geminiModels!.join('·'), dim: true })
+  expect(socios.at(-1)).toEqual({ text: d.sociosModels!.join('·'), dim: true })
+  expect(bandRows(d, 125)[2]?.at(-1)?.text.endsWith('…')).toBe(true)
+  expect(line(bandRows({ ...d, sociosLimits: undefined, sociosModel: undefined }, 180)[3])).toContain('—             sin datos todavía')
+  const bridge = { type: 'gemini', model: 'claude-haiku-5-5', working: true }
+  expect(agentLabel(bridge, d)).toBe('AGY Opus 5.5 High (vía Haiku 5.5)')
+  expect(agentLabel(bridge, { ...d, geminiModelAt: now })).toBe('AGY 4 Neon High (vía Haiku 5.5)')
+  for (let columns = 6; columns <= 180; columns++) {
+    const compact = bandRows(d, columns)
+    expect(compact.length >= 4).toBe(true)
+    expect(compact.every(row => line(row).length <= columns)).toBe(true)
   }
 })

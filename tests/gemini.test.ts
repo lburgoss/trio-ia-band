@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { bandRows } from '../hooks/band'
-import { geminiModelName, parseGeminiUsage, geminiWindow, goDuration, parseGeminiLog, yearOfLog } from '../hooks/gemini'
+import { geminiModelName, parseAgyUsage, parseGeminiUsage, geminiWindow, goDuration, parseGeminiLog, sociosModelName, yearOfLog } from '../hooks/gemini'
 import type { BandData } from '../types'
 
 const LOG = [
@@ -12,7 +12,7 @@ const LOG = [
 ].join('\n')
 const at = (h: number, m: number, s = 0) => new Date(2026, 10, 26, h, m, s).getTime()
 const line = (row: { text: string }[] = []) => row.map(s => s.text).join('')
-const geminiRow = (d: BandData, columns = 180) => bandRows(d, columns).find(row => row[0]?.text === 'GEMINI') ?? []
+const geminiRow = (d: BandData, columns = 180) => bandRows(d, columns)[2] ?? []
 
 test('lee del registro de agy el modelo, las consultas y el corte 429', () => {
   expect(yearOfLog('cli-20261126_192532.log')).toBe(2026)
@@ -61,11 +61,14 @@ test('muestra modelo, reinicio estimado o real, consultas y última consulta', (
 })
 
 const USAGE = JSON.stringify({ status: 'SUCCESS', command: { name: 'usage', data: { groups: [
-  { name: 'Gemini Models', buckets: [
+  { name: 'Gemini Models', description: 'Models within this group: Gemini 4 Neon, Gemini 4 Carbon, Gemini 4 Argon, Gemini 4 Hydrogen, Orchestrator (Neon), Orchestrator (Carbon), Orchestrator (Argon), Gemini 3.8 Flash', buckets: [
     { id: 'gemini-weekly', window: 'weekly', remaining_fraction: 0.9858, reset_time: '2026-12-04T00:19:43Z' },
     { id: 'gemini-5h', window: '5h', remaining_fraction: 0.9434, reset_time: '2026-11-27T05:19:43Z' },
   ] },
-  { name: 'Claude and GPT models', buckets: [{ id: '3p-5h', window: '5h', remaining_fraction: 1, reset_time: '1970-01-01T00:00:00Z' }] },
+  { name: 'Claude and GPT models', description: 'Models within this group: Claude Opus 5.5, Claude Sonnet 5.5, GPT-OSS 120B', buckets: [
+    { id: '3p-weekly', window: 'weekly', remaining_fraction: 0.5314, reset_time: '2026-12-04T03:50:43Z' },
+    { id: '3p-5h', window: '5h', remaining_fraction: 0.0629, reset_time: '2026-11-27T08:50:43Z' },
+  ] },
 ] } } })
 
 test('lee la cuota real de agy /usage y la pinta como Claude y Codex', () => {
@@ -80,4 +83,26 @@ test('lee la cuota real de agy /usage y la pinta como Claude y Codex', () => {
   expect(row).toContain('Semana')
   expect(row).toContain('↻ 4h30')
   expect(row).not.toContain('libre')
+})
+
+test('lee ambas cuotas y acorta los modelos incluso si solo los IDs identifican los grupos', () => {
+  const now = Date.parse('2026-11-27T00:50:00Z')
+  const named = parseAgyUsage(USAGE, now)
+  expect(parseAgyUsage(USAGE.replace('Claude and GPT models', 'Grupo B').replace('Gemini Models', 'Grupo A'), now)).toEqual(named)
+  expect(named.gemini?.models).toEqual(['4 Neon', '4 Carbon', '4 Argon', '4 Hydrogen', '3.8 Flash'])
+  expect(named.socios?.models).toEqual(['Opus 5.5', 'Sonnet 5.5', 'GPT-OSS 120B'])
+  expect(Math.round(named.socios!.five!.used)).toBe(94)
+  expect(Math.round(named.socios!.week!.used)).toBe(47)
+  expect(named.socios?.five?.resetsAt).toBe(Date.parse('2026-11-27T08:50:43Z'))
+  expect(named.socios?.five?.at).toBe(now)
+})
+
+test('retiene el último modelo de cada grupo con precisión dentro del segundo', () => {
+  const log = parseGeminiLog(LOG + '\n' + [
+    'I1126 19:21:52.909587 selected model override to backend: label="Claude Opus 5.5 (High)"',
+    'I1126 19:21:52.809587 selected model override to backend: label="GPT-OSS 120B"',
+  ].join('\n'), 2026)
+  expect(log.geminiModel?.value).toBe('Gemini 4 Neon (High)')
+  expect(sociosModelName(log.sociosModel!.value)).toBe('Opus 5.5 High')
+  expect(log.sociosModel!.at > log.geminiModel!.at).toBe(true)
 })
