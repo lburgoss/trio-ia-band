@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/es/portada.png" alt="trio-ia-band: los límites de Claude, Codex y Gemini en una sola banda de Claude Code" width="100%"></p>
+<p align="center"><img src="docs/es/portada.png" alt="trio-ia-band: los límites de Claude, Codex, AGY y AGY-O en una sola banda de Claude Code" width="100%"></p>
 
 <p align="center">
   <a href="LICENSE"><img alt="Licencia MIT" src="https://img.shields.io/badge/licencia-MIT-3FB950"></a>
@@ -38,11 +38,11 @@ Si usas Claude Code para dirigir y le pasas trabajo a Codex y a Gemini, Claude e
 
 **Claude en zona de reserva.** Claude pasó del 75 %: sale del reparto y el turno manda el trabajo a Gemini, que además renueva su ventana en 12 minutos.
 
-![Claude en zona de reserva y Gemini con cupo por vencer](docs/es/reserva.png)
+![Claude en zona de reserva y AGY con cupo por vencer](docs/es/reserva.png)
 
 **Gemini cortado por límite y Codex casi lleno.** Gemini sale del reparto y Codex baja de prioridad porque su semana pasa del 85 %.
 
-![Gemini con límite alcanzado y Codex casi lleno](docs/es/corte-gemini.png)
+![AGY-O casi sin cupo y Codex casi lleno](docs/es/corte-gemini.png)
 
 **Ventana angosta.** Al estrechar la terminal se quita detalle (semana, reinicios, memoria) sin romper las filas.
 

@@ -9,7 +9,7 @@ import type { Key } from './i18n'
  * - El cupo libre que se renueva pronto se pierde si no se usa: suma prioridad.
  * - Una semana casi gastada o un corte (429) bajan o anulan la prioridad.
  */
-export type Miembro = 'Claude' | 'Codex' | 'Gemini' | 'AGY-O'
+export type Miembro = 'Claude' | 'Codex' | 'AGY' | 'AGY-O'
 /** Nota de cada puesto; el texto visible sale de i18n.ts. */
 export type Nota = 'sinCupo' | 'vence' | 'semana'
 export type Puesto = {
@@ -51,7 +51,7 @@ export function turno(data: BandData): Turno {
   const puestos = [
     puesto('Claude', claude5, claude7, data.now),
     puesto('Codex', codex5, codex7, data.now),
-    puesto('Gemini', g.five, g.week, data.now, !!data.geminiLimited),
+    puesto('AGY', g.five, g.week, data.now, !!data.geminiLimited),
     puesto('AGY-O', s.five, s.week, data.now),
   ]
   const orden = [...puestos].sort((a, b) => b.puntaje - a.puntaje).filter(p => p.puntaje > 0).map(p => p.nombre)
@@ -70,7 +70,7 @@ const ZONA: Record<Turno['zonaClaude'], Key> = {
 const NOTA: Record<Nota, Key> = { sinCupo: 'note.sinCupo', vence: 'note.vence', semana: 'note.semana' }
 
 function fila(p: Puesto, lang: BandData['lang']): string {
-  const label = p.nombre === 'Gemini' ? t(lang, 'ctx.agy') : p.nombre === 'AGY-O' ? t(lang, 'ctx.agyO') : p.nombre
+  const label = p.nombre === 'AGY' ? t(lang, 'ctx.agy') : p.nombre === 'AGY-O' ? t(lang, 'ctx.agyO') : p.nombre
   const partes = [`${label}: 5 h ${p.usado === undefined ? t(lang, 'ctx.unknown') : t(lang, 'ctx.used', { n: Math.round(p.usado) })}`]
   if (p.renuevaMin !== undefined) {
     const time = p.renuevaMin >= 60

@@ -18,7 +18,7 @@ test('Claude al 80 % pasa a reserva y sale del reparto', () => {
 
 test('el cupo que vence pronto va primero', () => {
   const t = turno(base(20, 30, 40, 15))
-  expect(t.orden[0]).toBe('Gemini')
+  expect(t.orden[0]).toBe('AGY')
   expect(contextoTurno({ ...base(20, 30, 40, 15), lang: 'es' })).toContain('cupo por vencer')
 })
 
@@ -26,19 +26,19 @@ test('el bloque de turno sale en inglés por defecto y en español con lang es',
   const en = contextoTurno(base(20, 30, 40, 15))
   expect(en.split('\n')[0]).toBe('Team status (trio-ia-band mod; automatic data, not a user message):')
   expect(en).toContain('AGY (Gemini: reading, media, web): 5 h 40 % used · resets in 15 min · score 105 (quota about to reset: use it first)')
-  expect(en).toContain('Priority for new work now: Gemini > Codex > Claude > AGY-O.')
+  expect(en).toContain('Priority for new work now: AGY > Codex > Claude > AGY-O.')
   expect(en).toContain('Claude < 50 %: normal split')
   expect(en).not.toMatch(/Estado del equipo|Prioridad|puntaje|usado/)
   const es = contextoTurno({ ...base(20, 30, 40, 15), lang: 'es' })
   expect(es.split('\n')[0]).toContain('Estado del equipo')
   expect(es).toContain('Claude: 5 h 20 % usado · se renueva en 2 h 0 min')
-  expect(es).toContain('Prioridad para dar trabajo ahora: Gemini > Codex > Claude > AGY-O.')
+  expect(es).toContain('Prioridad para dar trabajo ahora: AGY > Codex > Claude > AGY-O.')
   expect(contextoTurno({ ...base(99, 99, 99), geminiLimited: true, sociosLimits: { five: { used: 99, at: now } } })).toContain('nobody has quota: tell the user')
 })
 
 test('un corte de Gemini lo saca del reparto', () => {
   const t = turno({ ...base(20, 30, 10), geminiLimited: true })
-  expect(t.orden).not.toContain('Gemini')
+  expect(t.orden).not.toContain('AGY')
 })
 
 test('puntúa a AGY-O y avisa al alcanzar el 90 % en cualquiera de sus ventanas', () => {

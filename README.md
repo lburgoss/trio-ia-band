@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/cover.png" alt="trio-ia-band: Claude, Codex and Gemini limits in one Claude Code band" width="100%"></p>
+<p align="center"><img src="docs/cover.png" alt="trio-ia-band: Claude, Codex, AGY and AGY-O limits in one Claude Code band" width="100%"></p>
 
 <p align="center">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3FB950"></a>
@@ -39,11 +39,11 @@ If you use Claude Code to orchestrate and hand work to Codex and Gemini, Claude 
 
 **Claude in its reserve zone.** Claude is past 75 %, so it leaves the split and the turn sends work to Gemini, whose window also resets in 12 minutes.
 
-![Claude in reserve and Gemini with quota about to reset](docs/reserve.png)
+![Claude in reserve and AGY with quota about to reset](docs/reserve.png)
 
 **Gemini rate-limited and Codex almost full.** Gemini leaves the split, and Codex drops in priority because its week is past 85 %.
 
-![Gemini at its limit and Codex almost full](docs/limit.png)
+![AGY-O almost out of quota and Codex almost full](docs/limit.png)
 
 **Narrow window.** In a narrow terminal the band drops detail (week, resets, memory) without breaking rows.
 

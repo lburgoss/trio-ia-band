@@ -131,7 +131,7 @@ function activeRow(data: BandData, columns: number): Field {
   const groups = new Map<string, { count: number; working: number }>()
   for (const agent of data.agents ?? []) {
     const type = (agent.type ?? '').toLowerCase()
-    const name = type === 'gemini' ? 'Gemini' : type.startsWith('codex') ? 'Codex'
+    const name = type === 'gemini' ? 'AGY' : type.startsWith('codex') ? 'Codex'
       : agent.model ? safeModel(modelName(agent.model)) : t(data.lang, 'band.modelPending')
     const group = groups.get(name) ?? { count: 0, working: 0 }
     group.count++
