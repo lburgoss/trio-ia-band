@@ -1,139 +1,149 @@
-<p align="center"><img src="docs/portada.png" alt="trio-ia-band: los límites de Claude, Codex y Gemini en una sola banda de Claude Code" width="100%"></p>
+<p align="center"><img src="docs/cover.png" alt="trio-ia-band: Claude, Codex and Gemini limits in one Claude Code band" width="100%"></p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="Licencia MIT" src="https://img.shields.io/badge/licencia-MIT-3FB950"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3FB950"></a>
   <img alt="Claude Code 2.1.275+" src="https://img.shields.io/badge/Claude%20Code-2.1.275%2B-D97757">
-  <img alt="Codex" src="https://img.shields.io/badge/Codex-opcional-10A37F">
-  <img alt="Gemini Antigravity" src="https://img.shields.io/badge/Gemini%20(Antigravity)-opcional-4285F4">
-  <img alt="Pruebas" src="https://img.shields.io/badge/pruebas-24%20ok-3FB950">
+  <img alt="Codex" src="https://img.shields.io/badge/Codex-optional-10A37F">
+  <img alt="Gemini Antigravity" src="https://img.shields.io/badge/Gemini%20(Antigravity)-optional-4285F4">
+  <img alt="Languages" src="https://img.shields.io/badge/UI-English%20%C2%B7%20Espa%C3%B1ol-8B949E">
 </p>
 
 # trio-ia-band
 
-**Claude + Codex + Gemini en una sola banda de Claude Code.** Muestra cuánto cupo le queda a cada uno, qué subagente trabaja en segundo plano y con qué modelo, y a quién conviene darle el siguiente trabajo antes de que Claude llegue al 100 %.
+> 🌐 **English** · [Español](README.es.md)
 
-> **English summary.** A [Claude Code](https://claude.com/claude-code) mod (plugin) that draws a band above the prompt with the 5-hour and weekly usage of **Claude**, **OpenAI Codex** and **Google Gemini (Antigravity CLI)**. It lists every background subagent with its model and task, and computes a **quota-aware work split**: it protects Claude's quota (the orchestrator) and prioritizes whoever has free quota about to reset. Spanish UI, MIT license.
+**Claude + Codex + Gemini in one Claude Code band.** See how much quota each one has left, which subagent is working in the background and on which model, and who should get the next job before Claude hits 100 %.
 
-## Contenido
+## Contents
 
-- [Por qué](#por-qué)
-- [Cómo se ve](#cómo-se-ve)
-- [Qué muestra cada fila](#qué-muestra-cada-fila)
-- [Reparto por cupo](#reparto-por-cupo)
-- [Instalación](#instalación)
-- [Uso](#uso)
-- [Privacidad](#privacidad)
-- [Desarrollo](#desarrollo)
-- [Créditos y licencia](#créditos-y-licencia)
+- [Why](#why)
+- [What it looks like](#what-it-looks-like)
+- [What each row shows](#what-each-row-shows)
+- [Quota-aware work split](#quota-aware-work-split)
+- [Install](#install)
+- [Usage](#usage)
+- [Language](#language)
+- [Privacy](#privacy)
+- [Development](#development)
+- [Credits and license](#credits-and-license)
 
-## Por qué
+## Why
 
-Si usas Claude Code para dirigir y le pasas trabajo a Codex y a Gemini, Claude es el cuello de botella. Cuando su ventana de 5 horas llega al 100 %, nadie coordina, aunque los otros dos estén casi sin usar. Esta banda muestra los tres a la vez y le dice a Claude, en cada mensaje, a quién darle trabajo.
+If you use Claude Code to orchestrate and hand work to Codex and Gemini, Claude is the bottleneck. When its 5-hour window reaches 100 %, nobody coordinates, even if the other two are barely used. This band shows all three at once and tells Claude, with every message, who should get the work.
 
-## Cómo se ve
+## What it looks like
 
-**Tres subagentes en segundo plano.** Cada uno con su modelo y su tarea; si solo es un puente hacia Gemini o Codex, lo dice con `(vía …)`.
+**Three subagents in the background.** Each one with its model and task. When a subagent is only a bridge to Gemini or Codex, it says so with `(via …)`.
 
-![Banda con tres subagentes en segundo plano](docs/normal.png)
+![Band with three background subagents](docs/normal.png)
 
-**Claude en zona de reserva.** Claude pasó del 75 %: sale del reparto y el turno manda el trabajo a Gemini, que además renueva su ventana en 12 minutos.
+**Claude in its reserve zone.** Claude is past 75 %, so it leaves the split and the turn sends work to Gemini, whose window also resets in 12 minutes.
 
-![Claude en zona de reserva y Gemini con cupo por vencer](docs/reserva.png)
+![Claude in reserve and Gemini with quota about to reset](docs/reserve.png)
 
-**Gemini cortado por límite y Codex casi lleno.** Gemini sale del reparto y Codex baja de prioridad porque su semana pasa del 85 %.
+**Gemini rate-limited and Codex almost full.** Gemini leaves the split, and Codex drops in priority because its week is past 85 %.
 
-![Gemini con límite alcanzado y Codex casi lleno](docs/corte-gemini.png)
+![Gemini at its limit and Codex almost full](docs/limit.png)
 
-**Ventana angosta.** Al estrechar la terminal se quita detalle (semana, reinicios, memoria) sin romper las filas.
+**Narrow window.** In a narrow terminal the band drops detail (week, resets, memory) without breaking rows.
 
-![Banda en una ventana angosta](docs/angosta.png)
+![Band in a narrow window](docs/narrow.png)
 
-## Qué muestra cada fila
+## What each row shows
 
-| Fila | Contenido |
+| Row | Content |
 |---|---|
-| **CLAUDE** | Modelo, si está trabajando (●), % usado de 5 h y de la semana con su reinicio, y minutos estimados de caché de prompts. |
-| **CODEX** | Modelo, % usado de cada límite con su reinicio y tokens de hoy. Lee los registros locales de `~/.codex/sessions` (o `CODEX_HOME`). ● verde trabajando, ● gris abierto, ○ cerrado. |
-| **GEMINI** | Modelo elegido en Antigravity y % usado de 5 h y semana, que pide a `agy -p /usage` cada 2 minutos (la consulta no gasta cuota). Sin sesión iniciada, lo estima por el registro (≈). |
-| **Activos** | Modelo principal y subagentes agrupados, más RAM y memoria de Claude, Codex y Gemini. |
-| **Turno** | Orden recomendado para dar trabajo ahora y zona de Claude: normal, delegar todo, reserva o crítico. |
-| **2º plano** | Una línea por subagente con modelo y tarea. Hasta 4 líneas y luego «+N más». |
+| **CLAUDE** | Model, whether it is working (●), 5-hour and weekly usage with reset time, and estimated prompt-cache minutes left. |
+| **CODEX** | Model, usage of each limit with reset time, and today's tokens. Reads local logs in `~/.codex/sessions` (or `CODEX_HOME`). Green ● working, grey ● open, ○ closed. |
+| **GEMINI** | Model selected in Antigravity, 5-hour and weekly usage, read from `agy -p /usage` every 2 minutes (the query uses no quota). Without a signed-in session it estimates from the log (≈). |
+| **Active** | Main model and grouped subagents, plus RAM and the memory used by Claude, Codex and Gemini. |
+| **Turn** | Recommended order for new work right now, and Claude's zone: normal, delegate all, reserve or critical. |
+| **Background** | One line per subagent with model and task. Up to 4 lines, then "+N more". |
 
-Las barras pasan de verde a ámbar y rojo cerca del límite. Avisa una vez por umbral, al 80 % y al 95 %, aunque la banda esté oculta.
+Bars go from green to amber to red near the limit. It warns once per threshold, at 80 % and 95 %, even with the band hidden.
 
-## Reparto por cupo
+## Quota-aware work split
 
-Para cada uno calcula un puntaje:
+Each member gets a score:
 
-- **Cupo libre** de la ventana de 5 h. A Claude se le descuenta una **reserva del 25 %** para coordinar y revisar.
-- **Cupo por vencer:** si la ventana se renueva en 60 minutos o menos, el cupo libre vale hasta el doble, porque se pierde si no se usa.
-- **La semana manda:** con la semana en 85 % o más, el puntaje baja a 0,3. Con 97 % o un corte (429), sale del reparto.
+- **Free quota** in the 5-hour window. Claude keeps a **25 % reserve** to coordinate and review.
+- **Quota about to reset:** if the window resets within 60 minutes, free quota counts up to double, because it is lost if unused.
+- **The week rules:** with weekly usage at 85 % or more the score is multiplied by 0.3. At 97 % or after a rate-limit cut (429), the member leaves the split.
 
-| Zona de Claude (5 h) | Qué hace Claude |
+| Claude's zone (5 h) | What Claude does |
 |---|---|
-| menos de 50 % | Reparto normal: planea y revisa; Codex y Gemini programan en paralelo. |
-| 50–75 % | Delega toda implementación y exploración. |
-| 75–90 % | Reserva: solo coordina y deja trabajos largos a Codex y Gemini, que siguen aunque Claude pare. |
-| 90 % o más | Crítico: deja lo pendiente encargado y avisa la hora de renovación. |
+| under 50 % | Normal split: Claude plans and reviews; Codex and Gemini code in parallel. |
+| 50–75 % | Delegates all implementation and exploration. |
+| 75–90 % | Reserve: only coordinates and leaves long, self-contained jobs to Codex and Gemini, which keep running if Claude stops. |
+| 90 % or more | Critical: hands off everything pending and tells you when its window resets. |
 
-En cada mensaje tuyo, el mod adjunta para el modelo (tú no lo ves) un bloque «Estado del equipo» con estos números y la prioridad. Para que Claude lo siga, agrega a tu `CLAUDE.md` una regla como esta:
+With every message you send, the mod attaches for the model (you don't see it) a "Team status" block with these numbers and the priority. To make Claude follow it, add a rule like this to your `CLAUDE.md`:
 
 ```markdown
-# Reparto por cupo
-Cada mensaje trae un bloque «Estado del equipo» del mod trio-ia-band. Sigue su «Prioridad para dar trabajo ahora»
-y la zona de Claude. Si dos tareas son independientes y van en archivos distintos, lánzalas en paralelo.
+# Quota-aware split
+Every message carries a "Team status" block from the trio-ia-band mod. Follow its "Priority for new work now"
+and Claude's zone. When two tasks are independent and touch different files, run them in parallel.
 ```
 
-## Instalación
+## Install
 
-Requiere Claude Code 2.1.275 o posterior. En la terminal, en el prompt de Claude Code:
+Requires Claude Code 2.1.275 or later. In a terminal, at the Claude Code prompt:
 
 ```
 /plugin install trio-ia-band --marketplace lburgoss/trio-ia-band
 ```
 
-Responde `y` para agregar el marketplace y elige el alcance de usuario. Desde una consola:
+Answer `y` to add the marketplace and pick the user scope. From a shell:
 
 ```
 claude plugin install trio-ia-band --marketplace lburgoss/trio-ia-band
 ```
 
-En la app de escritorio: **+** junto al prompt → **Plugins** → **Add marketplace** con `lburgoss/trio-ia-band` → **Add plugin**.
+In the desktop app: **+** next to the prompt → **Plugins** → **Add marketplace** with `lburgoss/trio-ia-band` → **Add plugin**.
 
-**Opcional, para las filas de Codex y Gemini:**
+**Optional, for the Codex and Gemini rows:**
 
-- [Codex CLI](https://github.com/openai/codex) con sesión iniciada. La banda solo lee sus registros locales.
-- Antigravity CLI (`agy`) con sesión iniciada. En Windows se busca en `%LOCALAPPDATA%\agy\bin\agy.exe`; en otros sistemas, `agy` en el `PATH`.
+- [Codex CLI](https://github.com/openai/codex), signed in. The band only reads its local logs.
+- Antigravity CLI (`agy`), signed in. On Windows it is looked up at `%LOCALAPPDATA%\agy\bin\agy.exe`; elsewhere, `agy` on the `PATH`.
 
-Sin ellos, esas filas dicen «sin datos todavía» y el reparto les supone un 50 % de cupo.
+Without them, those rows say "no data yet" and the split assumes 50 % quota for them.
 
-## Uso
+## Usage
 
-- **`/estado`** muestra u oculta la banda; la preferencia se recuerda entre sesiones.
-- Funciona en la terminal y en la app de escritorio.
+- **`/team-band`** (or `/estado` in Spanish) shows or hides the band; the choice is remembered across sessions.
+- Works in the terminal and in the desktop app.
 
-## Privacidad
+## Language
 
-Todo se calcula en tu computadora. La banda lee los límites que Claude Code ya conoce, los archivos locales de Codex y la salida de `agy -p /usage`. No envía nada a ningún servidor ni guarda claves.
+The band speaks **English** by default and adapts to the person who installs it. With `language` set to `auto` (the default) it checks, in order, Claude Code's `language` setting, the `LC_ALL`, `LC_MESSAGES` and `LANG` variables, and on Windows the system culture. Spanish is detected today; anything else falls back to English.
 
-## Desarrollo
+To force a language: `/config` → `trio-ia-band.language` → `auto`, `en` or `es`.
+
+New languages are one dictionary in `hooks/i18n.ts`: pull requests are welcome.
+
+## Privacy
+
+Everything is computed on your machine. The band reads the limits Claude Code already knows, Codex's local files and the output of `agy -p /usage`. It sends nothing to any server and stores no keys.
+
+## Development
 
 ```
-claude --plugin-dir ./trio-ia-band     # cargar el mod desde la carpeta
-claude plugin test ./trio-ia-band      # 24 pruebas
+claude --plugin-dir ./trio-ia-band     # load the mod from the folder
+claude plugin test ./trio-ia-band      # run the tests
 claude plugin validate ./trio-ia-band
 ```
 
-| Archivo | Qué hace |
+| File | What it does |
 |---|---|
-| `hooks/band.ts` | Dibuja las filas y las adapta al ancho. |
-| `hooks/turno.ts` | Reparto por cupo y bloque «Estado del equipo». |
-| `hooks/limits.ts` | Pronóstico de los límites y avisos al 80 % y 95 %. |
-| `hooks/codex.ts`, `hooks/gemini.ts` | Lectura de Codex y de Antigravity. |
-| `hooks/register.tsx` | Eventos de Claude Code: dibujo, turnos, subagentes y `/estado`. |
+| `hooks/band.ts` | Draws the rows and fits them to the width. |
+| `hooks/turno.ts` | Quota-aware split and the "Team status" block. |
+| `hooks/i18n.ts` | Texts in each language. |
+| `hooks/limits.ts` | Limit forecast and the 80 % / 95 % warnings. |
+| `hooks/codex.ts`, `hooks/gemini.ts` | Reading Codex and Antigravity. |
+| `hooks/register.tsx` | Claude Code events: drawing, turns, subagents, language and `/team-band`. |
 
-Las imágenes de `docs/` se generan con los datos de ejemplo y el mismo código de `band.ts`.
+The images in `docs/` are generated from sample data with the same `band.ts` code.
 
-## Créditos y licencia
+## Credits and license
 
-MIT. Adapta componentes de **KOZMOS**, de Ersin Koç (MIT). No está afiliado a Anthropic, OpenAI ni Google; Claude, Codex y Gemini son marcas de sus dueños.
+MIT. Adapts components from **KOZMOS** by Ersin Koç (MIT). Not affiliated with Anthropic, OpenAI or Google; Claude, Codex and Gemini are trademarks of their owners.

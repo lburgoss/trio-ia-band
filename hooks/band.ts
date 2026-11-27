@@ -3,6 +3,8 @@ import { readings } from './limits'
 import { clip, modelName } from './lib/kz'
 import { geminiModelName } from './gemini'
 import { turno } from './turno'
+import { formatNumber, t } from './i18n'
+import type { Lang } from './i18n'
 
 export type Segment = { text: string; color?: string; bold?: boolean; dim?: boolean }
 type Field = Segment[]
@@ -17,10 +19,11 @@ const MINUTE = 60_000
 const GAP = '  '
 const usedColor = (value: number) => value >= 90 ? RED : value >= 70 ? AMBER : GREEN
 const percent = (n: number) => `${Math.round(n)} %`
-const number = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',')
 const dim = (text: string): Segment => ({ text, dim: true })
 const widthOf = (field: Field) => field.reduce((sum, segment) => sum + segment.text.length, 0)
 const safeModel = (name: string) => name.replace(/[^\x20-\x7e—]/g, '?')
+// Row labels keep the same width in every language: 6 characters plus a space.
+const label = (text: string) => clip(text, 6).padEnd(6) + ' '
 
 function modelField(name: string): Field {
   const safe = safeModel(name)
@@ -39,7 +42,7 @@ export function resetText(at: number | undefined, now: number): string {
 
 // Both teams read the same way: the bar fills with the share used.
 function quota(title: string, reading: Reading | undefined, now: number, reset: boolean, bars: boolean): Field {
-  const heading = dim(title.padEnd(6) + ' ')
+  const heading = dim(label(title))
   if (!reading) return [heading, dim('—')]
   const used = Math.max(0, Math.min(100, reading.used))
   const filled = Math.round(used * 12 / 100)
@@ -58,7 +61,7 @@ function cache(data: BandData, five?: Reading, week?: Reading): Segment {
   if (data.lastRequestAt === undefined) return dim('—')
   const ttl = five && week && five.used < 100 && week.used < 100 ? 60 : 5
   const left = ttl * MINUTE - (data.now - data.lastRequestAt)
-  if (left <= 0) return { text: 'vencida', color: RED }
+  if (left <= 0) return { text: t(data.lang, 'band.expired'), color: RED }
   return { text: `${Math.ceil(left / MINUTE)} min`, color: left > 10 * MINUTE ? GREEN : AMBER }
 }
 
@@ -76,33 +79,33 @@ function geminiState(data: BandData): Segment {
 
 // Real reset after a 429 in red; otherwise the 5 h window estimated from its first request («≈»).
 function geminiReset(data: BandData): Field {
-  if (data.geminiResetsAt === undefined || data.geminiResetsAt <= data.now) return [dim('5 h    libre')]
+  if (data.geminiResetsAt === undefined || data.geminiResetsAt <= data.now) return [dim(label('5 h') + t(data.lang, 'band.free'))]
   const left = resetText(data.geminiResetsAt, data.now).slice(2)
-  if (data.geminiLimited) return [{ text: `Límite ↻ ${left}`, color: RED, bold: true }]
+  if (data.geminiLimited) return [{ text: `${t(data.lang, 'band.limit')} ↻ ${left}`, color: RED, bold: true }]
   const count = data.geminiWindowCount ?? 0
-  return [dim('5 h    '), { text: `↻ ≈${left}` }, dim(` · ${count} en ventana`)]
+  return [dim(label('5 h')), { text: `↻ ≈${left}` }, dim(t(data.lang, 'band.inWindow', { n: count }))]
 }
 
 function geminiToday(data: BandData): Field {
   const n = data.geminiToday ?? 0
-  return [n ? { text: `Hoy ${n} consulta${n === 1 ? '' : 's'}` } : dim('sin uso hoy')]
+  return [n ? { text: t(data.lang, n === 1 ? 'band.queriesOne' : 'band.queriesMany', { n }) } : dim(t(data.lang, 'band.noUseToday'))]
 }
 
-export function agoText(at: number, now: number): string {
+export function agoText(at: number, now: number, lang?: Lang): string {
   const minutes = Math.max(0, Math.floor((now - at) / MINUTE))
-  if (minutes < 60) return `hace ${minutes} min`
+  if (minutes < 60) return t(lang, 'band.agoMin', { n: minutes })
   const hours = Math.floor(minutes / 60)
-  return hours < 24 ? `hace ${hours} h` : `hace ${Math.floor(hours / 24)} d`
+  return hours < 24 ? t(lang, 'band.agoHour', { n: hours }) : t(lang, 'band.agoDay', { n: Math.floor(hours / 24) })
 }
 
-function tokenText(total: number): string {
-  if (total >= 1e6) return `${number(total / 1e6)} M tokens`
-  if (total >= 1000) return `${number(total / 1000)} k tokens`
+function tokenText(total: number, lang?: Lang): string {
+  if (total >= 1e6) return `${formatNumber(total / 1e6, lang)} M tokens`
+  if (total >= 1000) return `${formatNumber(total / 1000, lang)} k tokens`
   return `${total} tokens`
 }
 
-function memoryText(bytes: number): string {
-  return bytes >= 1024 ** 3 ? `${number(bytes / 1024 ** 3)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`
+function memoryText(bytes: number, lang?: Lang): string {
+  return bytes >= 1024 ** 3 ? `${formatNumber(bytes / 1024 ** 3, lang)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`
 }
 
 function join(fields: Field[]): Field {
@@ -126,15 +129,16 @@ function activeRow(data: BandData, columns: number): Field {
   if (columns < 64) return []
   const groups = new Map<string, { count: number; working: number }>()
   for (const agent of data.agents ?? []) {
-    const t = (agent.type ?? '').toLowerCase()
-    const name = t === 'gemini' ? 'Gemini' : t.startsWith('codex') ? 'Codex' : agent.model ? safeModel(modelName(agent.model)) : 'Modelo pendiente'
+    const type = (agent.type ?? '').toLowerCase()
+    const name = type === 'gemini' ? 'Gemini' : type.startsWith('codex') ? 'Codex'
+      : agent.model ? safeModel(modelName(agent.model)) : t(data.lang, 'band.modelPending')
     const group = groups.get(name) ?? { count: 0, working: 0 }
     group.count++
     if (agent.working) group.working++
     groups.set(name, group)
   }
   const left = join([
-    [dim('Activos')],
+    [dim(t(data.lang, 'band.active'))],
     ...(data.model ? [[{ text: DOT, color: data.working ? GREEN : GREY }, { text: ` ${safeModel(modelName(data.model))}` }]] : []),
     ...Array.from(groups).sort(([a], [b]) => a.localeCompare(b)).map(([name, group]) =>
       [{ text: DOT, color: group.working ? GREEN : GREY }, { text: ` ${name}${group.count > 1 ? ` ×${group.count}` : ''}` }]),
@@ -143,9 +147,9 @@ function activeRow(data: BandData, columns: number): Field {
   const ram = memUsed !== undefined && memTotal && memTotal > 0 ? 100 * memUsed / memTotal : undefined
   const right = join([
     ...(ram === undefined ? [] : [[{ text: `RAM ${percent(ram)}`, color: usedColor(ram) }]]),
-    ...(claude ? [[{ text: `Claude ${memoryText(claude.bytes)}` }]] : []),
-    ...(codex ? [[{ text: `Codex ${memoryText(codex.bytes)}` }]] : []),
-    ...(gemini ? [[{ text: `Gemini ${memoryText(gemini.bytes)}` }]] : []),
+    ...(claude ? [[{ text: `Claude ${memoryText(claude.bytes, data.lang)}` }]] : []),
+    ...(codex ? [[{ text: `Codex ${memoryText(codex.bytes, data.lang)}` }]] : []),
+    ...(gemini ? [[{ text: `Gemini ${memoryText(gemini.bytes, data.lang)}` }]] : []),
   ])
   if (left.length === 1 && !right.length) return []
   const gap = columns - widthOf(left) - widthOf(right)
@@ -159,24 +163,27 @@ type AgentRow = NonNullable<BandData['agents']>[number]
 
 // Who really does the work: a bridge subagent (Haiku/Sonnet) only passes the job to Gemini or Codex.
 export function agentLabel(agent: AgentRow, data: BandData): string {
-  const own = agent.model ? safeModel(modelName(agent.model)) : 'modelo pendiente'
+  const own = agent.model ? safeModel(modelName(agent.model)) : t(data.lang, 'band.modelPendingInline')
   const type = (agent.type ?? '').toLowerCase()
-  if (type === 'gemini') return `Gemini ${geminiModelName(data.geminiModel)} (vía ${own})`
-  if (type.startsWith('codex')) return `Codex ${data.codexModel?.replace(/^gpt-/i, 'GPT-') ?? ''}`.trimEnd() + ` (vía ${own})`
+  if (type === 'gemini') return t(data.lang, 'band.via', { agent: `Gemini ${geminiModelName(data.geminiModel)}`, model: own })
+  if (type.startsWith('codex')) {
+    return t(data.lang, 'band.via', { agent: `Codex ${data.codexModel?.replace(/^gpt-/i, 'GPT-') ?? ''}`.trimEnd(), model: own })
+  }
   return own
 }
 
-// One row per subagent: "2º plano  ● Sonnet 5.5  Assessment A design review". At most 4, then "+N más".
-// "Turno  Gemini > Codex > Claude · Claude: delegar": a quién darle trabajo ahora.
-const ZONA_TXT = { normal: 'normal', delegar: 'delegar todo', reserva: 'reserva', critica: 'crítico' } as const
+// One row per subagent: "Background ● Sonnet 5.5  Assessment A design review". At most 4, then "+N more".
+// "Turn    Gemini > Codex > Claude · Claude: delegate all": who should get work now.
+const ZONE_KEY = { normal: 'zone.normal', delegar: 'zone.delegar', reserva: 'zone.reserva', critica: 'zone.critica' } as const
 function turnoRow(data: BandData, columns: number): Field {
   if (columns < 40 || !data.now) return []
-  const t = turno(data)
-  const zona = t.zonaClaude === 'normal' ? GREEN : t.zonaClaude === 'delegar' ? AMBER : RED
-  const row: Field = [dim('Turno   '), { text: t.orden.length ? t.orden.join(' > ') : 'sin cupo', bold: true },
-    dim('  · Claude: '), { text: ZONA_TXT[t.zonaClaude], color: zona }]
-  const vence = t.puestos.find(p => p.nota?.startsWith('cupo por vencer'))
-  if (vence) row.push(dim('  · '), { text: `${vence.nombre} se renueva en ${vence.renuevaMin} min`, color: AMBER })
+  const turn = turno(data)
+  const zona = turn.zonaClaude === 'normal' ? GREEN : turn.zonaClaude === 'delegar' ? AMBER : RED
+  const row: Field = [dim(t(data.lang, 'band.turn').padEnd(7) + ' '),
+    { text: turn.orden.length ? turn.orden.join(' > ') : t(data.lang, 'band.noQuota'), bold: true },
+    dim('  · Claude: '), { text: t(data.lang, ZONE_KEY[turn.zonaClaude]), color: zona }]
+  const vence = turn.puestos.find(p => p.nota === 'vence')
+  if (vence) row.push(dim('  · '), { text: t(data.lang, 'band.resetsIn', { name: vence.nombre, n: vence.renuevaMin ?? 0 }), color: AMBER })
   return widthOf(row) <= columns ? row : row.slice(0, 2)
 }
 
@@ -184,14 +191,15 @@ function agentRows(data: BandData, columns: number): Field[] {
   const list = data.agents ?? []
   if (columns < 64 || !list.length) return []
   const shown = list.slice(0, list.length > 4 ? 3 : 4)
+  const background = t(data.lang, 'band.background')
   const rows: Field[] = shown.map(agent => {
-    const label = agentLabel(agent, data)
-    const head: Field = [dim('2º plano '), { text: DOT, color: agent.working ? GREEN : GREY }, { text: ` ${label}` }]
+    const who = agentLabel(agent, data)
+    const head: Field = [dim(background + ' '), { text: DOT, color: agent.working ? GREEN : GREY }, { text: ` ${who}` }]
     const room = columns - widthOf(head) - GAP.length
     const task = agent.task ? agent.task.replace(/[\u0000-\u001f\u007f]/g, ' ') : ''
     return room > 4 && task ? [...head, dim(GAP + clip(task, room))] : head
   })
-  if (list.length > shown.length) rows.push([dim(`2º plano +${list.length - shown.length} más`)])
+  if (list.length > shown.length) rows.push([dim(`${background} ${t(data.lang, 'band.more', { n: list.length - shown.length })}`)])
   return rows.map(row => widthOf(row) <= columns ? row : [{ text: clip(row.map(s => s.text).join(''), columns) }])
 }
 
@@ -230,25 +238,27 @@ export function bandRows(data: BandData, columns: number): Field[] {
       const width = Math.max(...fields.map(widthOf))
       return fields.map(field => [...field, { text: ' '.repeat(width - widthOf(field)) }])
     }
-    const [a5, b5, g5] = show('five') ? slot('5 h', claude5, codex5, gemini5) : [[], [], []]
-    const [a7, b7, g7] = show('week') ? slot('Semana', claude7, codex7, gemini7) : [[], [], []]
+    const [a5 = [], b5 = [], g5 = []] = show('five') ? slot('5 h', claude5, codex5, gemini5) : [[], [], []]
+    const [a7 = [], b7 = [], g7 = []] = show('week') ? slot(t(data.lang, 'band.week'), claude7, codex7, gemini7) : [[], [], []]
     const prefix = (title: Segment, model: string, status: Segment) => [
       // The dot sits right before the model it describes: "CLAUDE  ● Opus 5.5".
       [title], [...(show('state') ? [status, { text: ' ' }] : []), ...(show('model') ? modelField(model) : [])],
     ]
     const claude = trimRow(join([...prefix(claudeTitle, modelName(data.model), claudeState), a5, a7,
-      ...(show('extras') ? [[dim('Caché  '), cache(data, claude5, claude7)]] : []),
+      ...(show('extras') ? [[dim(label(t(data.lang, 'band.cache'))), cache(data, claude5, claude7)]] : []),
     ]))
     const codex = trimRow(join([...prefix(codexTitle, codexModel ?? '—', codexState(data)),
-      ...(noCodex ? (show('empty') ? [[dim('sin datos todavía')]] : []) : [b5, b7]),
-      ...(show('extras') && data.codexToday !== undefined ? [[dim('Hoy    '), { text: tokenText(data.codexToday) }]] : []),
+      ...(noCodex ? (show('empty') ? [[dim(t(data.lang, 'band.noData'))]] : []) : [b5, b7]),
+      ...(show('extras') && data.codexToday !== undefined
+        ? [[dim(label(t(data.lang, 'band.today'))), { text: tokenText(data.codexToday, data.lang) }]] : []),
     ]))
     const gemini = trimRow(join([...prefix(geminiTitle, geminiModelName(data.geminiModel), geminiState(data)),
       ...(geminiReal
-        ? [g5!, g7!, ...(data.geminiLimited ? [[{ text: 'Límite', color: RED, bold: true }]] : []),
+        ? [g5!, g7!, ...(data.geminiLimited ? [[{ text: t(data.lang, 'band.limit'), color: RED, bold: true }]] : []),
           ...(show('extras') ? [geminiToday(data)] : [])]
         : [...(show('five') ? [geminiReset(data)] : []), ...(show('empty') ? [geminiToday(data)] : [])]),
-      ...(show('extras') && data.geminiLastAt !== undefined ? [[dim('Última '), { text: agoText(data.geminiLastAt, data.now) }]] : []),
+      ...(show('extras') && data.geminiLastAt !== undefined
+        ? [[dim(label(t(data.lang, 'band.last'))), { text: agoText(data.geminiLastAt, data.now, data.lang) }]] : []),
     ]))
     if (widthOf(claude) <= columns && widthOf(codex) <= columns && widthOf(gemini) <= columns) {
       return [claude, codex, gemini, activeRow(data, columns), turnoRow(data, columns), ...agentRows(data, columns)].filter(row => row.length)

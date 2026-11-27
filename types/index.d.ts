@@ -1,3 +1,5 @@
+import type { Lang } from '../hooks/i18n'
+
 export type Reading = { used: number; resetsAt?: number; at: number }
 export type CodexLimits = Partial<Record<'five' | 'week', Reading>>
 export type CodexTokens = { input: number; cached: number; output: number }
@@ -45,6 +47,8 @@ export type BandData = {
   /** Consultas dentro de la ventana de 5 h estimada. */
   geminiWindowCount?: number
   sys?: SysSnap
+  /** Idioma de los textos visibles (por defecto, inglés). */
+  lang?: Lang
 }
 
 export type LimitData = Pick<BandData, 'now' | 'limits' | 'codex'> & {

@@ -1,6 +1,8 @@
 // Adapted from KOZMOS Hourglass by Ersin Koç (MIT).
 import type { Forecast, Reading, LimitData, WindowId } from '../types'
 export type { WindowId } from '../types'
+import { t } from './i18n'
+import type { Lang } from './i18n'
 
 const HOUR = 3600_000
 const MIN_SPAN = 10 * 60_000
@@ -63,16 +65,16 @@ export function wallTime(at: number): string {
   return [d.getHours(), d.getMinutes()].map(n => String(n).padStart(2, '0')).join(':')
 }
 
-export function verdictText(f: Forecast | undefined, now: number): string | undefined {
-  if (f?.verdict === 'dry') return `se agota a las ${wallTime(now + (f.etaMs ?? 0))}`
-  if (f?.verdict === 'safe') return 'llega al reinicio'
+export function verdictText(f: Forecast | undefined, now: number, lang?: Lang): string | undefined {
+  if (f?.verdict === 'dry') return t(lang, 'alert.runsOut', { time: wallTime(now + (f.etaMs ?? 0)) })
+  if (f?.verdict === 'safe') return t(lang, 'alert.reachesReset')
 }
 
 export function crossings(fired: readonly number[], used: number): number[] {
   return [80, 95].filter(threshold => used >= threshold && !fired.includes(threshold))
 }
 
-export function updateLimits(live: LimitData, saved: unknown) {
+export function updateLimits(live: LimitData, saved: unknown, lang?: Lang) {
   const current = readings(live)
   const now = live.now
   const stored = saved && typeof saved === 'object' ? saved as Partial<Saved> : {}
@@ -97,10 +99,10 @@ export function updateLimits(live: LimitData, saved: unknown) {
     const thresholds = crossings(fired, r.used)
     if (thresholds.length) next.alerts[key] = [...fired, ...thresholds]
     for (const threshold of thresholds) {
-      const verdict = verdictText(f, now)
-      const pace = verdict ? `al ritmo actual ${verdict}` : 'ritmo aún desconocido'
-      const mark = thresholds.length > 1 ? `umbral del ${threshold} % · ` : ''
-      alerts.push(`${team}: límite de ${label} al ${Math.round(r.used)} % — ${mark}${pace}, reinicia a las ${wallTime(r.resetsAt)}`)
+      const verdict = verdictText(f, now, lang)
+      const pace = verdict ? t(lang, 'alert.pace', { verdict }) : t(lang, 'alert.paceUnknown')
+      const mark = thresholds.length > 1 ? t(lang, 'alert.threshold', { n: threshold }) : ''
+      alerts.push(t(lang, 'alert.text', { team, label, used: Math.round(r.used), mark, pace, time: wallTime(r.resetsAt) }))
     }
   }
   const changed = JSON.stringify(next) !== JSON.stringify({ history, alerts: previousAlerts })

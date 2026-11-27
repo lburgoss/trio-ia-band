@@ -4,7 +4,7 @@ import type { BandData } from '../types'
 
 const now = new Date(2030, 0, 7, 5, 50).getTime()
 const data = (used = 62, codexUsed = 5): BandData => ({
-  now, model: 'claude-opus-5-5', codexModel: 'gpt-5.5', codexToday: 540_000,
+  now, model: 'claude-opus-5-5', codexModel: 'gpt-5.5', codexToday: 540_000, lang: 'es',
   limits: [
     { kind: 'five_hour', percentUsed: used, resetsAt: new Date(now + 130 * 60_000).toISOString() },
     { kind: 'seven_day', percentUsed: 40, resetsAt: new Date(now + 7 * 864e5 + 130 * 60_000).toISOString() },
@@ -12,6 +12,12 @@ const data = (used = 62, codexUsed = 5): BandData => ({
   codex: { five: { used: codexUsed, at: now }, week: { used: 10, at: now } },
 })
 const line = (row: ReturnType<typeof bandRows>[number] = []) => row.map(s => s.text).join('')
+// Same data without a language: the band must fall back to English.
+const english = (): BandData => {
+  const d = data()
+  delete d.lang
+  return d
+}
 
 test('colorea las barras de uso y saldo en los umbrales exactos', () => {
   // Both teams fill the same way: the share used, with the same thresholds.
@@ -67,7 +73,7 @@ test('agrupa agentes y reduce filas sin superar el ancho disponible', () => {
   for (let columns = 1; columns <= 180; columns++) {
     expect(bandRows(d, columns).every(row => line(row).length <= columns)).toBe(true)
   }
-  expect(line(bandRows({ limits: [], now }, 80)[1] ?? [])).toContain('sin datos todavía')
+  expect(line(bandRows({ limits: [], now, lang: 'es' }, 80)[1] ?? [])).toContain('sin datos todavía')
 })
 
 test('distingue un Codex activo, abierto o inactivo aunque aún falten lecturas', () => {
@@ -109,6 +115,42 @@ test('lista cada subagente con su modelo, su tarea y el puente a Gemini o Codex'
   expect(rows[2]).toContain('Codex GPT-5.5 (vía Sonnet 5.5)')
   const many = { ...d, agents: [...d.agents, ...d.agents] }
   expect(bandRows(many, 180).map(line).at(-1)).toContain('+3 más')
+  for (let columns = 1; columns <= 180; columns++) {
+    expect(bandRows(many, columns).every(row => line(row).length <= columns)).toBe(true)
+  }
+})
+
+test('habla inglés por defecto, con punto decimal, sin pasarse del ancho', () => {
+  const d: BandData = {
+    ...english(),
+    lastRequestAt: now - 70 * 60_000,
+    geminiToday: 1,
+    geminiLastAt: now - 4 * 60_000,
+    agents: [
+      { model: 'claude-sonnet-5-5', working: true, task: 'Design review', type: 'general-purpose' },
+      { model: 'claude-haiku-5-5', working: false, task: 'Read video', type: 'gemini' },
+    ],
+    sys: { memUsed: 62, memTotal: 100, claude: { count: 1, bytes: 1.1 * 1024 ** 3 } },
+  }
+  const rows = bandRows(d, 180).map(line)
+  expect(rows[0]).toMatch(/Week .*↻ \d+d\d+h/)
+  expect(rows[0]).toMatch(/Cache\s+expired$/)
+  expect(rows[1]).toContain('Today  540 k tokens')
+  expect(rows[2]).toContain('5 h    free')
+  expect(rows[2]).toContain('Today 1 query')
+  expect(rows[2]).toContain('Last   4 min ago')
+  expect(rows.find(row => row.startsWith('Active'))).toContain('Claude 1.1 GB')
+  expect(rows.find(row => row.startsWith('Turn '))).toContain('· Claude: delegate all')
+  const background = rows.filter(row => row.startsWith('Background '))
+  expect(background).toHaveLength(2)
+  expect(background[0]).toContain('● Sonnet 5.5  Design review')
+  expect(background[1]).toContain('Gemini Antigravity (via Haiku 5.5)')
+  expect(rows.join('\n')).not.toMatch(/Semana|Caché|Hoy|Última|Activos|Turno|2º plano|vía|vencida/)
+  expect(line(bandRows({ ...d, codexToday: 1_234_567 }, 180)[1])).toContain('1.2 M tokens')
+  expect(line(bandRows({ ...d, codexToday: 1_234_567, lang: 'es' }, 180)[1])).toContain('1,2 M tokens')
+  expect(line(bandRows({ limits: [], now }, 80)[1])).toContain('no data yet')
+  const many = { ...d, agents: [...d.agents!, ...d.agents!, ...d.agents!] }
+  expect(bandRows(many, 180).map(line).at(-1)).toBe('Background +3 more')
   for (let columns = 1; columns <= 180; columns++) {
     expect(bandRows(many, columns).every(row => line(row).length <= columns)).toBe(true)
   }

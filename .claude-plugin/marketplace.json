@@ -1,5 +1,13 @@
 {
   "name": "trio-ia-band",
-  "owner": { "name": "lburgoss" },
-  "plugins": [{ "name": "trio-ia-band", "source": "./", "description": "Límites de Claude, Codex y Gemini en una banda, con reparto de trabajo por cupo." }]
+  "owner": {
+    "name": "lburgoss"
+  },
+  "plugins": [
+    {
+      "name": "trio-ia-band",
+      "source": "./",
+      "description": "Claude, Codex and Gemini limits in one band, with a quota-aware work split."
+    }
+  ]
 }

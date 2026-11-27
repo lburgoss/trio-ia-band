@@ -37,7 +37,7 @@ test('estima la ventana de 5 h desde la primera consulta tras una ventana vencid
 
 test('muestra modelo, reinicio estimado o real, consultas y última consulta', () => {
   const now = at(16, 0)
-  const base: BandData = { now, limits: [], geminiModel: 'Gemini 4 Neon (High)', geminiToday: 4, geminiLastAt: now - 4 * 60_000 }
+  const base: BandData = { now, limits: [], lang: 'es', geminiModel: 'Gemini 4 Neon (High)', geminiToday: 4, geminiLastAt: now - 4 * 60_000 }
   const estimado = line(geminiRow({ ...base, geminiResetsAt: at(19, 30), geminiWindowCount: 2 }))
   expect(estimado).toContain('4 Neon High')
   expect(estimado).toContain('↻ ≈3h30 · 2 en ventana')
@@ -49,6 +49,15 @@ test('muestra modelo, reinicio estimado o real, consultas y última consulta', (
   for (let columns = 1; columns <= 180; columns++) {
     expect(bandRows({ ...base, geminiResetsAt: at(19, 30), geminiWindowCount: 2 }, columns).every(row => line(row).length <= columns)).toBe(true)
   }
+  // Without a language the same row is in English.
+  const english: BandData = { ...base }
+  delete english.lang
+  const estimated = line(geminiRow({ ...english, geminiResetsAt: at(19, 30), geminiWindowCount: 2 }))
+  expect(estimated).toContain('↻ ≈3h30 · 2 in window')
+  expect(estimated).toContain('Today 4 queries')
+  expect(estimated).toContain('Last   4 min ago')
+  const limited = geminiRow({ ...english, geminiResetsAt: now + 42 * 60_000, geminiLimited: true })
+  expect(limited.find(s => s.text.startsWith('Limit'))).toEqual({ text: 'Limit ↻ 42min', color: '#F85149', bold: true })
 })
 
 const USAGE = JSON.stringify({ status: 'SUCCESS', command: { name: 'usage', data: { groups: [
@@ -66,7 +75,7 @@ test('lee la cuota real de agy /usage y la pinta como Claude y Codex', () => {
   expect(Math.round(limits.week!.used)).toBe(1)
   expect(limits.five!.resetsAt).toBe(Date.parse('2026-11-27T05:19:43Z'))
   expect(parseGeminiUsage('Error: You are not logged into Antigravity.', now)).toBe(undefined)
-  const row = line(geminiRow({ now, limits: [], geminiLimits: limits }))
+  const row = line(geminiRow({ now, limits: [], lang: 'es', geminiLimits: limits }))
   expect(row).toContain('6 %')
   expect(row).toContain('Semana')
   expect(row).toContain('↻ 4h30')

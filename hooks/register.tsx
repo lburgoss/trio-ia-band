@@ -9,6 +9,8 @@ import type { Platform } from './lib/probe'
 import { LIMIT_STORE, updateLimits } from './limits'
 import { geminiWindow, parseGeminiLog, parseGeminiUsage, yearOfLog } from './gemini'
 import type { GeminiLog } from './gemini'
+import { isLang, t } from './i18n'
+import type { Lang } from './i18n'
 
 const TICK_MS = 1000
 const PROBE_MS = 5000
@@ -268,7 +270,7 @@ function refreshAgents() {
 async function checkLimits($: EngineInterface) {
   if (!live.limits.length && !live.codex?.five && !live.codex?.week) return
   const saved = await $.store.get(LIMIT_STORE)
-  const result = updateLimits(live, saved)
+  const result = updateLimits(live, saved, live.lang)
   if (!result.changed) return
   await $.store.set(LIMIT_STORE, result.memory)
   for (const alert of result.alerts) $.ui.toast(alert)
@@ -312,7 +314,47 @@ async function sample($: EngineInterface) {
 
 import { contextoTurno } from './turno'
 
-export const register: Register = on => {
+const COMMANDS = ['team-band', 'estado'] as const
+
+// Claude Code's own `language` setting, from `$.config.list()` (row with key «language»).
+async function configLanguage($: EngineInterface): Promise<string | undefined> {
+  const rows: unknown = await $.config.list()
+  const list: unknown[] = Array.isArray(rows) ? rows
+    : rows && typeof rows === 'object' ? Object.entries(rows).map(([key, value]) => ({ key, value })) : []
+  for (const row of list) {
+    if (!row || typeof row !== 'object') continue
+    const { key, name, value } = row as { key?: unknown; name?: unknown; value?: unknown }
+    if ((key ?? name) === 'language' && typeof value === 'string') return value
+  }
+  return undefined
+}
+
+const startsSpanish = (value: string | undefined) => !!value && value.trim().toLowerCase().startsWith('es')
+
+/** auto: Claude Code setting, then LC_ALL / LC_MESSAGES / LANG, then the Windows culture. Anything else: English. */
+async function detectLang($: EngineInterface): Promise<Lang> {
+  try {
+    const setting = (await configLanguage($).catch(() => undefined))?.trim().toLowerCase()
+    if (setting && (setting.startsWith('es') || setting.includes('spanish') || setting.includes('español'))) return 'es'
+    // The engine wants literal names in $.env.get.
+    if (startsSpanish(await $.env.get('LC_ALL').catch(() => undefined))) return 'es'
+    if (startsSpanish(await $.env.get('LC_MESSAGES').catch(() => undefined))) return 'es'
+    if (startsSpanish(await $.env.get('LANG').catch(() => undefined))) return 'es'
+    const os = await $.env.get('OS').catch(() => undefined)
+    if (/windows/i.test(os ?? '')) {
+      const culture = await sh($, ['powershell', '-NoProfile', '-Command', '(Get-Culture).Name'], 4000)
+      if (startsSpanish(culture)) return 'es'
+    }
+  } catch {
+    // Any failure while detecting: English.
+  }
+  return 'en'
+}
+
+export const register: Register = (on, options) => {
+  // Opción `language` del plugin: auto (por defecto), en o es.
+  const forced = (options as unknown as { language?: unknown } | undefined)?.language
+
   // Cada mensaje del usuario lleva, solo para el modelo, el estado de los tres y a quién darle trabajo.
   on('prompt.submit', async ($, e, next) => {
     if (e.command || e.isMeta || !live.now) return next(e)
@@ -330,19 +372,24 @@ export const register: Register = on => {
     rollouts.clear()
     geminiLogs.clear()
     $.ui.status(undefined)
+    live.lang = isLang(forced) ? forced : await detectLang($).catch((): Lang => 'en')
     enabled = await $.store.get(STORE_KEY).catch(() => undefined) !== false
-    await $.command.register({ name: 'estado', description: 'Muestra u oculta la banda de Claude, Codex y Gemini', immediate: true })
+    await $.command.register({ name: 'team-band', description: t(live.lang, 'cmd.description'), immediate: true })
+    await $.command.register({ name: 'estado', description: t(live.lang, 'cmd.aliasDescription'), immediate: true })
     $.clock.every(TICK_MS, () => void sample($).catch(() => undefined))
     await sample($).catch(() => undefined)
     return started
   })
 
-  on('command.run', { command: 'estado' }, async $ => {
-    enabled = !enabled
-    redraw($)
-    await $.store.set(STORE_KEY, enabled)
-    return { text: enabled ? 'Banda de estado visible.' : 'Banda de estado oculta.' }
-  })
+  // /team-band and its Spanish alias /estado both toggle the band.
+  for (const command of COMMANDS) {
+    on('command.run', { command }, async $ => {
+      enabled = !enabled
+      redraw($)
+      await $.store.set(STORE_KEY, enabled)
+      return { text: t(live.lang, enabled ? 'cmd.shown' : 'cmd.hidden') }
+    })
+  }
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) {

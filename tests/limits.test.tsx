@@ -20,7 +20,8 @@ test('el ritmo medido pronostica los límites de Claude y Codex', () => {
   const { forecasts } = updateLimits(data(82, NOW, reset), initial.memory)
   for (const id of ['claude5', 'codex5'] as const) {
     expect(forecasts[id]).toEqual({ rate: 22, etaMs: 18 * HOUR / 22, verdict: 'dry' })
-    expect(verdictText(forecasts[id], NOW)).toMatch(/^se agota a las \d\d:\d\d$/)
+    expect(verdictText(forecasts[id], NOW, 'es')).toMatch(/^se agota a las \d\d:\d\d$/)
+    expect(verdictText(forecasts[id], NOW)).toMatch(/^runs out at \d\d:\d\d$/)
   }
 })
 
@@ -31,7 +32,8 @@ test('una ventana lenta llega al reinicio y una lectura vencida no da pronóstic
   const memory = observe(observe(undefined, first, 5), latest, 5)
   const safe = forecast(latest, memory, 5, NOW)
   expect(safe).toEqual({ rate: 10, etaMs: 7 * HOUR, verdict: 'safe' })
-  expect(verdictText(safe, NOW)).toBe('llega al reinicio')
+  expect(verdictText(safe, NOW, 'es')).toBe('llega al reinicio')
+  expect(verdictText(safe, NOW)).toBe('lasts until the reset')
   expect(forecast(latest, memory, 5, reset)).toEqual({})
   expect(observe(memory, { ...latest, resetsAt: reset + HOUR }, 5).samples).toHaveLength(1)
 })
@@ -41,7 +43,7 @@ test('cada equipo avisa una vez por ventana, reinicio y umbral', () => {
   let saved = updateLimits(data(79, NOW, reset), undefined).memory
   const toasts: string[] = []
   const read = (used: number, at: number, resetsAt = reset) => {
-    const result = updateLimits(data(used, at, resetsAt), JSON.parse(JSON.stringify(saved)))
+    const result = updateLimits(data(used, at, resetsAt), JSON.parse(JSON.stringify(saved)), 'es')
     saved = result.memory
     toasts.push(...result.alerts)
   }
@@ -58,11 +60,21 @@ test('cada equipo avisa una vez por ventana, reinicio y umbral', () => {
   const weekly = data(97, NOW + 6000, reset)
   weekly.limits.push({ kind: 'seven_day', percentUsed: 82, resetsAt: new Date(reset).toISOString() })
   weekly.codex!.week = { used: 82, at: weekly.now, resetsAt: reset }
-  const weekResult = updateLimits(weekly, saved)
+  const weekResult = updateLimits(weekly, saved, 'es')
   expect(weekResult.alerts).toHaveLength(2)
   expect(weekResult.alerts.every(alert => alert.includes('límite de 7 d'))).toBe(true)
   read(97, reset + 1000, reset + 5 * HOUR)
   expect(toasts).toHaveLength(8)
+})
+
+test('los avisos salen en inglés por defecto', () => {
+  const reset = NOW + 2 * HOUR
+  const saved = updateLimits(data(79, NOW, reset), undefined).memory
+  const { alerts } = updateLimits(data(82, NOW + 1000, reset), saved)
+  expect(alerts).toHaveLength(2)
+  expect(alerts).toContainEqual(expect.stringContaining('Claude: 5 h limit at 82 % —'))
+  expect(alerts).toContainEqual(expect.stringContaining('Codex: 5 h limit at 82 % —'))
+  expect(alerts.every(alert => alert.includes(', resets at ') && !alert.includes('límite'))).toBe(true)
 })
 
 test('el muestreo respeta un aviso guardado y persiste el siguiente antes del toast', async ($, on) => {
@@ -91,5 +103,6 @@ test('el muestreo respeta un aviso guardado y persiste el siguiente antes del to
   used = 96
   await clock.advance(3000)
   expect(toasts).toHaveLength(1)
-  expect(toasts[0]).toContain('Claude: límite de 5 h al 96 % —')
+  // The toast follows the detected language (English by default).
+  expect(toasts[0]).toMatch(/Claude: (5 h limit at|límite de 5 h al) 96 % —/)
 })
