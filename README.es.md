@@ -4,7 +4,8 @@
   <a href="LICENSE"><img alt="Licencia MIT" src="https://img.shields.io/badge/licencia-MIT-3FB950"></a>
   <img alt="Claude Code 2.1.275+" src="https://img.shields.io/badge/Claude%20Code-2.1.275%2B-D97757">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-opcional-10A37F">
-  <img alt="Gemini Antigravity" src="https://img.shields.io/badge/Gemini%20(Antigravity)-opcional-4285F4">
+  <img alt="AGY: Antigravity Gemini" src="https://img.shields.io/badge/AGY-Gemini%20(Antigravity)-4285F4">
+  <img alt="AGY-O: Antigravity Claude and GPT" src="https://img.shields.io/badge/AGY--O-Claude%20%2F%20GPT%20(Antigravity)-4285F4">
   <img alt="Idiomas" src="https://img.shields.io/badge/idiomas-English%20%C2%B7%20Espa%C3%B1ol-8B949E">
 </p>
 
@@ -12,7 +13,7 @@
 
 > 🌐 [English](README.md) · **Español**
 
-**Claude + Codex + Gemini en una sola banda de Claude Code.** Muestra cuánto cupo le queda a cada uno, qué subagente trabaja en segundo plano y con qué modelo, y a quién conviene darle el siguiente trabajo antes de que Claude llegue al 100 %.
+**Claude + Codex + Antigravity (AGY y AGY-O) en una sola banda de Claude Code.** Muestra cuánto cupo le queda a cada uno, qué subagente trabaja en segundo plano y con qué modelo, y a quién conviene darle el siguiente trabajo antes de que Claude llegue al 100 %.
 
 ## Contenido
 

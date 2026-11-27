@@ -4,7 +4,8 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3FB950"></a>
   <img alt="Claude Code 2.1.275+" src="https://img.shields.io/badge/Claude%20Code-2.1.275%2B-D97757">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-optional-10A37F">
-  <img alt="Gemini Antigravity" src="https://img.shields.io/badge/Gemini%20(Antigravity)-optional-4285F4">
+  <img alt="AGY: Antigravity Gemini" src="https://img.shields.io/badge/AGY-Gemini%20(Antigravity)-4285F4">
+  <img alt="AGY-O: Antigravity Claude and GPT" src="https://img.shields.io/badge/AGY--O-Claude%20%2F%20GPT%20(Antigravity)-4285F4">
   <img alt="Languages" src="https://img.shields.io/badge/UI-English%20%C2%B7%20Espa%C3%B1ol-8B949E">
 </p>
 
@@ -12,7 +13,7 @@
 
 > 🌐 **English** · [Español](README.es.md)
 
-**Claude + Codex + Gemini in one Claude Code band.** See how much quota each one has left, which subagent is working in the background and on which model, and who should get the next job before Claude hits 100 %.
+**Claude + Codex + Antigravity (AGY and AGY-O) in one Claude Code band.** See how much quota each one has left, which subagent is working in the background and on which model, and who should get the next job before Claude hits 100 %.
 
 ## Contents
 
