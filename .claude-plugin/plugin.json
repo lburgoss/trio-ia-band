@@ -1,0 +1,10 @@
+{
+  "name": "trio-ia-band",
+  "version": "1.1.0",
+  "description": "Banda para Claude Code con los límites de Claude, Codex y Gemini (Antigravity), cada subagente en segundo plano y un reparto de trabajo según el cupo que queda y el que vence.",
+  "author": { "name": "trio-ia-band contributors" },
+  "homepage": "https://github.com/lburgoss/trio-ia-band",
+  "repository": "https://github.com/lburgoss/trio-ia-band",
+  "license": "MIT",
+  "keywords": ["claude-code", "codex", "gemini", "antigravity", "rate-limits", "quota", "statusline", "multi-agent"]
+}

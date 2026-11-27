@@ -1,0 +1,1 @@
+{ "description": "Banda de Claude, Codex y Gemini sobre el prompt. Usa /estado para mostrarla u ocultarla.", "modules": ["./register.tsx"] }
