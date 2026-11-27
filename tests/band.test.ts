@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { agentLabel, bandRows } from '../hooks/band'
+import { agentLabel, agentMember, bandRows, memberStates } from '../hooks/band'
 import type { BandData } from '../types'
 
 const now = new Date(2030, 0, 7, 5, 50).getTime()
@@ -34,7 +34,7 @@ test('colorea las barras de uso y saldo en los umbrales exactos', () => {
     expect(line(codex)).not.toContain('quedan')
   }
   const [claude = [], codex = []] = bandRows(data(), 180)
-  expect(claude[0]).toEqual({ text: 'CLAUDE', bold: true, color: '#D97757' })
+  expect(claude[0]).toEqual({ text: 'CLAUDE', bold: true, color: '#3FB950' })
   expect(line(claude)).toContain('███████░░░░░  62 %')
   expect(line(claude)).toContain('↻ 2h10')
   expect(line(claude)).toMatch(/Semana .*↻ \d+d\d+h/)
@@ -80,15 +80,15 @@ test('agrupa agentes y reduce filas sin superar el ancho disponible', () => {
 test('distingue un Codex activo, abierto o inactivo aunque aún falten lecturas', () => {
   const status = (d: BandData) => bandRows(d, 180)[1]?.find(s => s.text === '●' || s.text === '○')
   const d = { now, limits: [], sys: { codex: { count: 1, bytes: 1024 } } }
-  expect(status({ ...d, codexModifiedAt: now - 29_999 })).toEqual({ text: '●', color: '#3FB950' })
-  expect(status({ ...d, codexModifiedAt: now - 30_000 })).toEqual({ text: '●', color: '#8B949E' })
+  expect(status({ ...d, agents: [{ type: 'codex:codex-rescue', working: true }] })).toEqual({ text: '●', color: '#3FB950' })
+  expect(status({ ...d, codexModifiedAt: now, agents: [{ type: 'codex:codex-rescue', working: false }] })).toEqual({ text: '●', color: '#8B949E' })
   expect(status({ now, limits: [] })).toEqual({ text: '○', color: '#8B949E' })
 })
 
-test('muestra la fila AGY en azul con su estado y las consultas de hoy', () => {
-  const activo = bandRows({ ...data(), geminiModifiedAt: now - 5_000, geminiToday: 3 }, 180)
+test('muestra la fila AGY en verde mientras trabaja y las consultas de hoy', () => {
+  const activo = bandRows({ ...data(), agents: [{ type: 'gemini', working: true }], geminiToday: 3 }, 180)
   const gemini = activo[2] ?? []
-  expect(gemini[0]).toEqual({ text: 'AGY   ', bold: true, color: '#4285F4' })
+  expect(gemini[0]).toEqual({ text: 'AGY   ', bold: true, color: '#3FB950' })
   expect(gemini.find(s => s.text === '●')?.color).toBe('#3FB950')
   expect(line(gemini)).toContain('Antigravity')
   expect(line(gemini)).toContain('Hoy 3 consultas')
@@ -172,9 +172,7 @@ test('alinea las cuotas de las cuatro filas y pinta AGY-O en azul', () => {
     { text: 'AGY-O', color: '#4285F4', bold: true },
     { text: ' ' },
   ])
-  expect(socios.find(s => s.text === '●')?.color).toBe('#3FB950')
-  expect(bandRows({ ...d, sociosModelAt: now - 30_000 }, 180)[3]?.[3]?.color).toBe('#8B949E')
-  expect(bandRows({ ...d, geminiModifiedAt: undefined }, 180)[3]?.[3]?.color).toBe('#8B949E')
+  expect(socios.find(s => s.text === '○')?.color).toBe('#8B949E')
   expect(line(socios)).toContain('94 %')
   expect(line(socios)).toContain('47 %')
   for (const [lang, week] of [['en', 'Week'], ['es', 'Semana']] as const) {
@@ -191,11 +189,122 @@ test('alinea las cuotas de las cuatro filas y pinta AGY-O en azul', () => {
   expect(bandRows(d, 125)[2]?.at(-1)?.text.endsWith('…')).toBe(true)
   expect(line(bandRows({ ...d, sociosLimits: undefined, sociosModel: undefined }, 180)[3])).toContain('—             sin datos todavía')
   const bridge = { type: 'gemini', model: 'claude-haiku-5-5', working: true }
-  expect(agentLabel(bridge, d)).toBe('AGY Opus 5.5 High (vía Haiku 5.5)')
+  expect(agentLabel({ ...bridge, task: 'Run agy --model claude-opus-5-5' }, d)).toBe('AGY-O claude-opus-5-5 (vía Haiku 5.5)')
   expect(agentLabel(bridge, { ...d, geminiModelAt: now })).toBe('AGY 4 Neon High (vía Haiku 5.5)')
   for (let columns = 6; columns <= 180; columns++) {
     const compact = bandRows(d, columns)
     expect(compact.length >= 4).toBe(true)
     expect(compact.every(row => line(row).length <= columns)).toBe(true)
+  }
+})
+
+test('mapea cada subagente al miembro de la banda que ejecuta el trabajo', () => {
+  expect(agentMember({ type: 'codex:codex-rescue', working: true })).toBe('Codex')
+  expect(agentMember({ type: 'gemini', working: true })).toBe('AGY')
+  expect(agentMember({ type: 'gemini', working: true, task: 'Programar --model claude-opus-5-5' })).toBe('AGY-O')
+  expect(agentMember({ type: 'gemini', working: true, task: 'Revisar --model=gpt-oss-120b' })).toBe('AGY-O')
+  expect(agentMember({ type: 'gemini:gemini', working: true, task: 'Run agy --model="gpt-oss-120b"' })).toBe('AGY-O')
+  expect(agentMember({ type: 'gemini', working: true, task: 'Leer --model gemini-4-neon' })).toBe('AGY')
+  expect(agentMember({ type: 'codex-review', working: true })).toBe('Codex')
+  expect(agentMember({ type: 'general-purpose', model: 'claude-sonnet-5-5', working: true })).toBe('Claude')
+})
+
+test('aplica los tres estados visuales por fila: sin cupo, trabajando y disponible', () => {
+  // Sin cupo prevalece sobre trabajando (nunca verde), mientras las barras conservan sus umbrales.
+  const agotado: BandData = {
+    ...data(62, 5),
+    working: false,
+    codexModel: 'gpt-5.5',
+    geminiModel: 'Gemini 4 Neon (High)',
+    sociosModel: 'Opus 5.5 High',
+    geminiModifiedAt: now - 1_000,
+    sociosModelAt: now - 1_000,
+    geminiLimits: { five: { used: 10, at: now }, week: { used: 5, at: now } },
+    sociosLimits: { five: { used: 100, at: now, resetsAt: now + 15 * 60_000 }, week: { used: 47, at: now } },
+    agents: [
+      { type: 'codex:codex-rescue', model: 'claude-sonnet-5-5', working: true, task: 'Arreglar pruebas' },
+      { type: 'gemini', model: 'claude-haiku-5-5', working: true, task: 'Revisar --model claude-opus-5-5' },
+    ],
+  }
+  expect(memberStates(agotado)).toEqual({ Claude: 'working', Codex: 'working', AGY: 'available', 'AGY-O': 'noQuota' })
+
+  const rows = bandRows(agotado, 180)
+  const [claude = [], codex = [], agy = [], agyO = []] = rows
+
+  // Claude (sesión activa con cupo): trabajando en verde.
+  expect(claude[0]).toEqual({ text: 'CLAUDE', color: '#3FB950', bold: true })
+  expect(claude.find(s => s.text === '●')?.color).toBe('#3FB950')
+  expect(line(claude)).toContain('● trabajando')
+  expect(claude.find(s => s.text.startsWith('Opus 5.5'))?.color).toBe('#3FB950')
+
+  // Codex (subagente en marcha sin escritura reciente en disco): trabajando en verde.
+  expect(codex[0]).toEqual({ text: 'CODEX ', color: '#3FB950', bold: true })
+  expect(codex.find(s => s.text === '●')?.color).toBe('#3FB950')
+  expect(codex.find(s => s.text.startsWith('GPT-5.5'))?.color).toBe('#3FB950')
+
+  // AGY (con cupo y sin trabajo): disponible, color normal (ni verde ni gris oscuro apagado).
+  expect(agy[0]).toEqual({ text: 'AGY   ', color: '#4285F4', bold: true })
+  expect(agy.find(s => s.text === '○')?.color).toBe('#8B949E')
+  const agyModel = agy.find(s => s.text.startsWith('4 Neon High'))
+  expect(agyModel?.color).toBe(undefined)
+  expect(agyModel?.dim).toBe(undefined)
+
+  // AGY-O (5 h al 100 %): sin cupo en gris oscuro atenuado con ⏸ y «sin cupo», nunca verde;
+  // las barras siguen en rojo (100 %) y verde (47 %).
+  expect(agyO[0]).toEqual({ text: 'AGY-O', color: '#484F58', dim: true })
+  expect(agyO.find(s => s.text === '⏸')).toEqual({ text: '⏸', color: '#484F58', dim: true })
+  const sociosModel = agyO.find(s => s.text.startsWith('Opus 5.5'))
+  expect(sociosModel?.color).toBe('#484F58')
+  expect(sociosModel?.dim).toBe(true)
+  expect(line(agyO)).toContain('sin cupo')
+  expect(agyO.some(s => s.color === '#3FB950' && !s.text.startsWith('█'))).toBe(false)
+  const sociosBars = agyO.filter(s => s.text.startsWith('█'))
+  expect(sociosBars[0]?.color).toBe('#F85149')
+  expect(sociosBars[1]?.color).toBe('#3FB950')
+
+  // En Activos y 2º plano, Codex sale en verde y el subagente de AGY-O sin cupo sale en gris oscuro.
+  const active = rows.find(row => row[0]?.text === 'Activos') ?? []
+  expect(active.find(s => s.text === ' Codex')?.color).toBe('#3FB950')
+  expect(active.find(s => s.text === ' AGY-O')).toEqual({ text: ' AGY-O', color: '#484F58', dim: true })
+  const bg = rows.filter(row => row[0]?.text === '2º plano ')
+  expect(bg[0]?.[1]).toEqual({ text: '●', color: '#3FB950' })
+  expect(bg[1]?.[1]).toEqual({ text: '⏸', color: '#484F58', dim: true })
+
+  // Semana ≥ 97 % también apaga la fila y la etiqueta en inglés dice «no quota».
+  const weekOut: BandData = {
+    now, lang: 'en', limits: [{ kind: 'five_hour', percentUsed: 10 }, { kind: 'seven_day', percentUsed: 97 }],
+    model: 'claude-opus-5-5', working: true,
+    agents: [{ type: 'gemini', working: true, task: 'Read docs' }],
+    geminiLimits: { five: { used: 10, at: now }, week: { used: 10, at: now } },
+  }
+  expect(memberStates(weekOut)).toEqual({ Claude: 'noQuota', Codex: 'available', AGY: 'working', 'AGY-O': 'available' })
+  const [claudeOut = [], , agyWork = []] = bandRows(weekOut, 180)
+  expect(claudeOut[0]).toEqual({ text: 'CLAUDE', color: '#484F58', dim: true })
+  expect(claudeOut.find(s => s.text === '⏸')).toEqual({ text: '⏸', color: '#484F58', dim: true })
+  expect(line(claudeOut)).toContain('no quota')
+  expect(line(agyWork)).toContain('● working')
+  expect(agyWork.find(s => s.text === '●')?.color).toBe('#3FB950')
+
+  // Claude sin sesión activa ni trabajo queda disponible (color normal, no gris oscuro).
+  expect(memberStates({ now, limits: [{ kind: 'five_hour', percentUsed: 20 }] }).Claude).toBe('available')
+
+  // Las columnas de cuota siguen alineadas y caben en cualquier ancho.
+  expect(memberStates({ now, limits: [], sessionActive: true }).Claude).toBe('working')
+  // En la reserva de coordinación (75 %) Claude sigue trabajando; solo se apaga al quedarse sin cupo.
+  expect(memberStates(data(75)).Claude).toBe('working')
+  expect(memberStates(data(97)).Claude).toBe('noQuota')
+  const sociosAvailable = { ...agotado, sociosLimits: { five: { used: 20, at: now } } }
+  expect(memberStates(sociosAvailable)['AGY-O']).toBe('working')
+  expect(line(bandRows(sociosAvailable, 180)[3])).toContain('● trabajando')
+  expect(memberStates({ ...weekOut, geminiLimited: true }).AGY).toBe('noQuota')
+  expect(line(bandRows(agotado, 40)[3])).toContain('sin cupo')
+  const aligned = bandRows(agotado, 180).slice(0, 4).map(line)
+  for (const title of ['5 h', 'Semana']) {
+    const offsets = aligned.map(row => row.indexOf(title))
+    expect(offsets[0]! > 0).toBe(true)
+    expect(offsets).toEqual(Array(4).fill(offsets[0]))
+  }
+  for (let columns = 6; columns <= 180; columns++) {
+    expect(bandRows(agotado, columns).every(row => line(row).length <= columns)).toBe(true)
   }
 })

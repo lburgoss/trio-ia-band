@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { AgentInfo, On } from 'claude-code'
 import { codexDays } from '../hooks/codex'
 
 const NOW = new Date(2030, 0, 7, 12).getTime()
@@ -10,7 +10,7 @@ const view = (surface: 'terminal' | 'desktop') => ({
   props: { hasSurvey: false, isCollapsed: false, isWorking: false, bodyColumns: 180, maxRows: 10, scroll: { offset: 0, bodyRows: 10 }, view: {} },
 })
 
-function world(on: On, codexHome?: string) {
+function world(on: On, codexHome?: string, claudeUsed = 5, agents: AgentInfo[] = []) {
   const cleared: (string | undefined)[] = []
   const store = new Map<string, unknown>()
   on('store.get', ($, e) => ({ value: store.get(e.key) }))
@@ -29,12 +29,12 @@ function world(on: On, codexHome?: string) {
   on('session.usage', () => ({
     value: {
       startedAt: NOW, context: { tokens: 0, window: 100, percent: 0 },
-      rateLimits: [{ kind: 'five_hour', percentUsed: 5 }, { kind: 'seven_day', percentUsed: 7 }],
+      rateLimits: [{ kind: 'five_hour', percentUsed: claudeUsed }, { kind: 'seven_day', percentUsed: 7 }],
     },
   }))
   on('env.get', ($, e) => ({ value: e.name === 'OS' ? 'Windows_NT' : e.name === 'CODEX_HOME' ? codexHome : undefined }))
   on('process.run', () => ({ value: { exitCode: 0, stdout: '{}', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
-  on('agent.list', () => ({ value: [] }))
+  on('agent.list', () => ({ value: agents }))
   return { cleared, store }
 }
 
@@ -74,7 +74,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
   })
 }
 
-test('solo el turno principal cambia el estado de Claude y renueva su caché', async ($, on) => {
+test('la sesión activa mantiene a Claude en verde y solo el turno principal renueva su caché', async ($, on) => {
   mock.clock(on, { now: NOW })
   const { store } = world(on)
   on('turn.step', async function* ($, e) {
@@ -87,14 +87,14 @@ test('solo el turno principal cambia el estado de Claude y renueva su caché', a
   await $.session.start(START)
   const band = await $.ui.mount(view('terminal'))
   const text = async () => (await band.findAll({ type: 'Text' })).map(node => node.text).join('')
-  const dot = async (row: number) => (await band.findAll({ type: 'Text' })).filter(node => node.text === '●').map(node => node.props.color)[row]
+  const dot = async (row: number) => (await band.findAll({ type: 'Text' })).filter(node => node.text === '●' || node.text === '○' || node.text === '⏸').map(node => node.props.color)[row]
   const step = async (turnId: string, agentId?: string) => {
     for await (const chunk of $.turn.step({ turnId, agentId, index: 0, model: agentId ? 'claude-haiku-5-5' : 'claude-opus-5-5', messageCount: 1 })) void chunk
   }
   const complete = (turnId: string, agentId?: string) =>
     $.turn.complete({ turnId, agentId, reason: 'answer', answer: '', durationMs: 200, isAborted: false })
   await step('agent', 'a')
-  expect(await dot(0)).toBe('#8B949E')
+  expect(await dot(0)).toBe('#3FB950')
   // The label depends on the detected language (English by default, «Caché» in Spanish).
   expect(await text()).toMatch(/Cach[eé]\s+—/)
   await step('main')
@@ -103,8 +103,26 @@ test('solo el turno principal cambia el estado de Claude y renueva su caché', a
   await complete('agent', 'a')
   expect(await dot(0)).toBe('#3FB950')
   await complete('main')
-  expect(await dot(0)).toBe('#8B949E')
+  expect(await dot(0)).toBe('#3FB950')
   expect(store.get('tokens:test-session')).toBe(280)
+  await band.unmount()
+})
+
+test('pinta en verde un subagente de Codex en marcha y apaga a Claude sin cupo', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  world(on, undefined, 100, [
+    { id: 'cx', type: 'codex:codex-rescue', status: 'running', description: 'Fix bug' } as AgentInfo,
+  ])
+  await $.session.start(START)
+  const band = await $.ui.mount(view('terminal'))
+  const status = async (row: number) => (await band.findAll({ type: 'Text' }))
+    .filter(node => node.text === '●' || node.text === '○' || node.text === '⏸')[row]
+  expect((await status(0))?.text).toBe('⏸')
+  expect((await status(0))?.props.color).toBe('#484F58')
+  expect((await status(1))?.text).toBe('●')
+  expect((await status(1))?.props.color).toBe('#3FB950')
+  expect((await status(2))?.text).toBe('○')
+  expect((await status(2))?.props.color).toBe('#8B949E')
   await band.unmount()
 })
 
@@ -148,8 +166,8 @@ test('Codex consulta el stat cada 5 s y redescubre archivos cada 60 s', async ($
   await $.session.start(START)
   const band = await $.ui.mount(view('terminal'))
   const text = async () => (await band.findAll({ type: 'Text' })).map(node => node.text).join('')
-  const dot = async (row: number) => (await band.findAll({ type: 'Text' })).filter(node => node.text === '●').map(node => node.props.color)[row]
-  expect(await dot(1)).toBe('#3FB950')
+  const dot = async (row: number) => (await band.findAll({ type: 'Text' })).filter(node => node.text === '●' || node.text === '○' || node.text === '⏸').map(node => node.props.color)[row]
+  expect(await dot(1)).toBe('#8B949E')
   expect(await text()).toContain('5 %')
   await clock.advance(5000)
   expect(stats).toBe(1)
@@ -160,7 +178,7 @@ test('Codex consulta el stat cada 5 s y redescubre archivos cada 60 s', async ($
   expect(scans).toBe(1)
   expect(await text()).toContain('25 tokens')
   await clock.advance(26_000)
-  expect(await dot(1)).not.toBe('#3FB950')
+  expect(await dot(1)).toBe('#8B949E')
   await clock.advance(24_000)
   expect(scans).toBe(2)
   expect(reads).toEqual([12, 25])

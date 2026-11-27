@@ -3,20 +3,25 @@ import { readings } from './limits'
 import { clip, modelName } from './lib/kz'
 import { geminiModelName } from './gemini'
 import { turno } from './turno'
+import type { Miembro } from './turno'
 import { formatNumber, t } from './i18n'
 import type { Lang } from './i18n'
 
 export type Segment = { text: string; color?: string; bold?: boolean; dim?: boolean }
+export type RowState = 'noQuota' | 'working' | 'available'
 type Field = Segment[]
 
 const GREEN = '#3FB950'
 const AMBER = '#D29922'
 const RED = '#F85149'
 const GREY = '#8B949E'
+const DARK_GREY = '#484F58'
 const DOT = '●'
 const OFF = '○'
+const PAUSE = '⏸'
 const MINUTE = 60_000
 const GAP = '  '
+const SOCIOS_MODEL_RE = /^(?:claude|gpt|opus|sonnet|haiku)(?:$|[-.\d])/i
 const usedColor = (value: number) => value >= 90 ? RED : value >= 70 ? AMBER : GREEN
 const percent = (n: number) => `${Math.round(n)} %`
 const dim = (text: string): Segment => ({ text, dim: true })
@@ -25,9 +30,24 @@ const safeModel = (name: string) => name.replace(/[^\x20-\x7e—]/g, '?')
 // Row labels keep the same width in every language: 6 characters plus a space.
 const label = (text: string) => clip(text, 6).padEnd(6) + ' '
 
-function modelField(name: string): Field {
-  const safe = safeModel(name)
-  return [{ text: clip(safe, 12).padEnd(12) }]
+function modelField(name: string, state: RowState): Field {
+  const text = clip(safeModel(name), 12).padEnd(12)
+  if (state === 'noQuota') return [{ text, color: DARK_GREY, dim: true }]
+  if (state === 'working') return [{ text, color: GREEN }]
+  return [{ text }]
+}
+
+function titleField(text: string, color: string, state: RowState, pad = true): Field {
+  const segment = (part: string): Segment => state === 'noQuota'
+    ? { text: part, color: DARK_GREY, dim: true }
+    : { text: part, color: state === 'working' ? GREEN : color, bold: true }
+  return pad ? [segment(text.padEnd(6))] : [segment(text), { text: ' ' }]
+}
+
+function statusSegment(state: RowState, open: boolean): Segment {
+  if (state === 'noQuota') return { text: PAUSE, color: DARK_GREY, dim: true }
+  if (state === 'working') return { text: DOT, color: GREEN }
+  return open ? { text: DOT, color: GREY } : { text: OFF, color: GREY }
 }
 
 // "↻ 42min", "↻ 2h10", "↻ 3d4h": time left before the window starts over.
@@ -65,17 +85,28 @@ function cache(data: BandData, five?: Reading, week?: Reading): Segment {
   return { text: `${Math.ceil(left / MINUTE)} min`, color: left > 10 * MINUTE ? GREEN : AMBER }
 }
 
-// Green ● working; grey ● open and idle; grey ○ not running. No orange: it read as a warning.
-function codexState(data: BandData): Segment {
-  if (data.codexModifiedAt !== undefined && data.now - data.codexModifiedAt < 30_000) return { text: DOT, color: GREEN }
-  return data.sys?.codex?.count ? { text: DOT, color: GREY } : { text: OFF, color: GREY }
+type AgentRow = NonNullable<BandData['agents']>[number]
+
+function agentModelOverride(agent: AgentRow): string | undefined {
+  return /(?:^|[\s`])--model(?:=|\s+)["']?([\w.-]+)/i.exec(agent.task ?? '')?.[1]
 }
 
-// AGY shows activity for each group while its model selection and the log write are recent.
-function agyState(data: BandData, modelAt: number | undefined): Segment {
-  if (modelAt !== undefined && data.now - modelAt >= 0 && data.now - modelAt < 30_000
-      && data.geminiModifiedAt !== undefined && data.now - data.geminiModifiedAt < 30_000) return { text: DOT, color: GREEN }
-  return data.sys?.gemini?.count ? { text: DOT, color: GREY } : { text: OFF, color: GREY }
+export function agentMember(agent: AgentRow): Miembro {
+  const type = (agent.type ?? '').toLowerCase()
+  if (/^codex(?:$|[:-])/.test(type)) return 'Codex'
+  if (type.split(':').at(-1) === 'gemini') {
+    return SOCIOS_MODEL_RE.test(agentModelOverride(agent) ?? '') ? 'AGY-O' : 'AGY'
+  }
+  return 'Claude'
+}
+
+export function memberStates(data: BandData, turn = turno(data)): Record<Miembro, RowState> {
+  const active = new Set((data.agents ?? []).filter(agent => agent.working).map(agentMember))
+  if (data.sessionActive || data.working || data.model) active.add('Claude')
+  // Only a real quota cut-off greys a row out; Claude's coordination reserve keeps it working.
+  return Object.fromEntries(turn.puestos.map(({ nombre, nota }) => [
+    nombre, nota === 'sinCupo' ? 'noQuota' : active.has(nombre) ? 'working' : 'available',
+  ])) as Record<Miembro, RowState>
 }
 
 // Real reset after a 429 in red; otherwise the 5 h window estimated from its first request («≈»).
@@ -126,23 +157,32 @@ function trimRow(row: Field): Field {
   return row
 }
 
-function activeRow(data: BandData, columns: number): Field {
+function activeRow(data: BandData, columns: number, states: Record<Miembro, RowState>): Field {
   if (columns < 64) return []
-  const groups = new Map<string, { count: number; working: number }>()
+  const groups = new Map<string, { count: number; working: number; member: Miembro }>()
   for (const agent of data.agents ?? []) {
-    const type = (agent.type ?? '').toLowerCase()
-    const name = type === 'gemini' ? 'AGY' : type.startsWith('codex') ? 'Codex'
+    const member = agentMember(agent)
+    const name = member === 'AGY' ? t(data.lang, 'band.agy')
+      : member === 'AGY-O' ? t(data.lang, 'band.agyO')
+      : member === 'Codex' ? 'Codex'
       : agent.model ? safeModel(modelName(agent.model)) : t(data.lang, 'band.modelPending')
-    const group = groups.get(name) ?? { count: 0, working: 0 }
+    const group = groups.get(name) ?? { count: 0, working: 0, member }
     group.count++
     if (agent.working) group.working++
     groups.set(name, group)
   }
+  const chip = (text: string, state: RowState): Field => {
+    if (state === 'noQuota') return [{ text: PAUSE, color: DARK_GREY, dim: true }, { text: ` ${text}`, color: DARK_GREY, dim: true }]
+    if (state === 'working') return [{ text: DOT, color: GREEN }, { text: ` ${text}`, color: GREEN }]
+    return [{ text: DOT, color: GREY }, { text: ` ${text}` }]
+  }
   const left = join([
     [dim(t(data.lang, 'band.active'))],
-    ...(data.model ? [[{ text: DOT, color: data.working ? GREEN : GREY }, { text: ` ${safeModel(modelName(data.model))}` }]] : []),
-    ...Array.from(groups).sort(([a], [b]) => a.localeCompare(b)).map(([name, group]) =>
-      [{ text: DOT, color: group.working ? GREEN : GREY }, { text: ` ${name}${group.count > 1 ? ` ×${group.count}` : ''}` }]),
+    ...(data.model ? [chip(safeModel(modelName(data.model)), states.Claude)] : []),
+    ...Array.from(groups).sort(([a], [b]) => a.localeCompare(b)).map(([name, group]) => {
+      const state: RowState = states[group.member] === 'noQuota' ? 'noQuota' : group.working ? 'working' : 'available'
+      return chip(`${name}${group.count > 1 ? ` ×${group.count}` : ''}`, state)
+    }),
   ])
   const { memUsed, memTotal, claude, codex, gemini } = data.sys ?? {}
   const ram = memUsed !== undefined && memTotal && memTotal > 0 ? 100 * memUsed / memTotal : undefined
@@ -160,18 +200,15 @@ function activeRow(data: BandData, columns: number): Field {
 }
 
 
-type AgentRow = NonNullable<BandData['agents']>[number]
-
 // Who really does the work: a bridge subagent (Haiku/Sonnet) only passes the job to Gemini or Codex.
 export function agentLabel(agent: AgentRow, data: BandData): string {
   const own = agent.model ? safeModel(modelName(agent.model)) : t(data.lang, 'band.modelPendingInline')
-  const type = (agent.type ?? '').toLowerCase()
-  if (type === 'gemini') {
-    const model = data.sociosModel && (data.sociosModelAt ?? -Infinity) > (data.geminiModelAt ?? -Infinity)
-      ? data.sociosModel : geminiModelName(data.geminiModel)
-    return t(data.lang, 'band.via', { agent: `${t(data.lang, 'band.agy')} ${model}`, model: own })
+  const member = agentMember(agent)
+  if (member === 'AGY' || member === 'AGY-O') {
+    const model = member === 'AGY-O' ? agentModelOverride(agent) : geminiModelName(data.geminiModel)
+    return t(data.lang, 'band.via', { agent: `${member} ${model}`, model: own })
   }
-  if (type.startsWith('codex')) {
+  if (member === 'Codex') {
     return t(data.lang, 'band.via', { agent: `Codex ${data.codexModel?.replace(/^gpt-/i, 'GPT-') ?? ''}`.trimEnd(), model: own })
   }
   return own
@@ -180,9 +217,8 @@ export function agentLabel(agent: AgentRow, data: BandData): string {
 // One row per subagent: "Background ● Sonnet 5.5  Assessment A design review". At most 4, then "+N more".
 // "Turn    Gemini > Codex > Claude · Claude: delegate all": who should get work now.
 const ZONE_KEY = { normal: 'zone.normal', delegar: 'zone.delegar', reserva: 'zone.reserva', critica: 'zone.critica' } as const
-function turnoRow(data: BandData, columns: number): Field {
+function turnoRow(data: BandData, columns: number, turn: ReturnType<typeof turno>): Field {
   if (columns < 40 || !data.now) return []
-  const turn = turno(data)
   const zona = turn.zonaClaude === 'normal' ? GREEN : turn.zonaClaude === 'delegar' ? AMBER : RED
   const row: Field = [dim(t(data.lang, 'band.turn').padEnd(7) + ' '),
     { text: turn.orden.length ? turn.orden.join(' > ') : t(data.lang, 'band.noQuota'), bold: true },
@@ -192,14 +228,20 @@ function turnoRow(data: BandData, columns: number): Field {
   return widthOf(row) <= columns ? row : row.slice(0, 2)
 }
 
-function agentRows(data: BandData, columns: number): Field[] {
+function agentRows(data: BandData, columns: number, states: Record<Miembro, RowState>): Field[] {
   const list = data.agents ?? []
   if (columns < 64 || !list.length) return []
   const shown = list.slice(0, list.length > 4 ? 3 : 4)
   const background = t(data.lang, 'band.background')
   const rows: Field[] = shown.map(agent => {
     const who = agentLabel(agent, data)
-    const head: Field = [dim(background + ' '), { text: DOT, color: agent.working ? GREEN : GREY }, { text: ` ${who}` }]
+    const member = agentMember(agent)
+    const state: RowState = states[member] === 'noQuota' ? 'noQuota' : agent.working ? 'working' : 'available'
+    const dot: Segment = state === 'noQuota' ? { text: PAUSE, color: DARK_GREY, dim: true }
+      : state === 'working' ? { text: DOT, color: GREEN } : { text: DOT, color: GREY }
+    const whoSeg: Segment = state === 'noQuota' ? { text: ` ${who}`, color: DARK_GREY, dim: true }
+      : state === 'working' ? { text: ` ${who}`, color: GREEN } : { text: ` ${who}` }
+    const head: Field = [dim(background + ' '), dot, whoSeg]
     const room = columns - widthOf(head) - GAP.length
     const task = agent.task ? agent.task.replace(/[\u0000-\u001f\u007f]/g, ' ') : ''
     return room > 4 && task ? [...head, dim(GAP + clip(task, room))] : head
@@ -211,13 +253,14 @@ function agentRows(data: BandData, columns: number): Field[] {
 export function bandRows(data: BandData, columns: number): Field[] {
   if (columns < 6) return []
   const { claude5, claude7, codex5, codex7 } = readings(data)
-  const claudeState: Segment = { text: DOT, color: data.working ? GREEN : GREY }
+  const turn = turno(data)
+  const states = memberStates(data, turn)
   const codexModel = data.codexModel?.replace(/^gpt-/i, 'GPT-')
   const noCodex = !codex5 && !codex7 && data.codexToday === undefined && !codexModel
-  const claudeTitle = { text: 'CLAUDE', color: '#D97757', bold: true }
-  const codexTitle = { text: 'CODEX ', color: '#10A37F', bold: true }
-  const geminiTitle = { text: t(data.lang, 'band.agy').padEnd(6), color: '#4285F4', bold: true }
-  const sociosTitle = [{ text: t(data.lang, 'band.agyO'), color: '#4285F4', bold: true }, { text: ' ' }]
+  const claudeTitle = titleField('CLAUDE', '#D97757', states.Claude)
+  const codexTitle = titleField('CODEX', '#10A37F', states.Codex)
+  const geminiTitle = titleField(t(data.lang, 'band.agy'), '#4285F4', states.AGY)
+  const sociosTitle = titleField(t(data.lang, 'band.agyO'), '#4285F4', states['AGY-O'], false)
   // Real quota from `agy -p /usage` when it answered; otherwise the old log estimate.
   const { five: gemini5, week: gemini7 } = data.geminiLimits ?? {}
   const { five: socios5, week: socios7 } = data.sociosLimits ?? {}
@@ -225,14 +268,16 @@ export function bandRows(data: BandData, columns: number): Field[] {
 
   // Each layout sheds detail while keeping the fields shared by the four rows aligned.
   const layouts = [
-    'extras resets week bars model five state empty',
-    'resets week bars model five state empty',
-    'week bars model five state empty',
-    'bars model five state empty',
-    'week model five state empty',
-    'model five state empty',
+    'extras resets week bars model five state empty tags',
+    'resets week bars model five state empty tags',
+    'week bars model five state empty tags',
+    'bars model five state empty tags',
+    'week model five state empty tags',
+    'model five state empty tags',
+    'five state empty tags',
+    'five state tags',
+    'state tags',
     'five state empty',
-    'five empty',
     'state',
     '',
   ]
@@ -247,29 +292,42 @@ export function bandRows(data: BandData, columns: number): Field[] {
     }
     const [a5 = [], b5 = [], g5 = [], s5 = []] = show('five') ? slot('5 h', claude5, codex5, gemini5, socios5) : []
     const [a7 = [], b7 = [], g7 = [], s7 = []] = show('week') ? slot(t(data.lang, 'band.week'), claude7, codex7, gemini7, socios7) : []
-    const prefix = (title: Field, model: string, status: Segment) => [
-      // The dot sits right before the model it describes: "CLAUDE  ● Opus 5.5".
-      title, [...(show('state') ? [status, { text: ' ' }] : []), ...(show('model') ? modelField(model) : [])],
-    ]
-    const claude = trimRow(join([...prefix([claudeTitle], modelName(data.model), claudeState), a5, a7,
+    const prefix = (title: Field, model: string, state: RowState, open: boolean): Field[] => {
+      const marker = show('tags') && state !== 'available' ? { text: ' ' } : statusSegment(state, open)
+      return [title, [
+        ...(show('state') ? [marker, { text: ' ' }] : []),
+        ...(show('model') ? modelField(model, state) : []),
+      ]]
+    }
+    const stateTag = (state: RowState): Field[] => {
+      if (!show('tags') || state === 'available') return []
+      const tag = t(data.lang, state === 'noQuota' ? 'band.noQuota' : 'band.working')
+      return [[statusSegment(state, false), { text: ' ' }, {
+        text: tag, color: state === 'noQuota' ? DARK_GREY : GREEN, dim: state === 'noQuota' || undefined,
+      }]]
+    }
+    const claude = trimRow(join([...prefix(claudeTitle, modelName(data.model), states.Claude, true), a5, a7,
+      ...stateTag(states.Claude),
       ...(show('extras') ? [[dim(label(t(data.lang, 'band.cache'))), cache(data, claude5, claude7)]] : []),
     ]))
-    const codex = trimRow(join([...prefix([codexTitle], codexModel ?? '—', codexState(data)),
+    const codex = trimRow(join([...prefix(codexTitle, codexModel ?? '—', states.Codex, !!data.sys?.codex?.count),
       ...(noCodex ? (show('empty') ? [[dim(t(data.lang, 'band.noData'))]] : []) : [b5, b7]),
+      ...stateTag(states.Codex),
       ...(show('extras') && data.codexToday !== undefined
         ? [[dim(label(t(data.lang, 'band.today'))), { text: tokenText(data.codexToday, data.lang) }]] : []),
     ]))
-    const geminiAt = data.geminiModelAt ?? (data.sociosModelAt === undefined ? data.geminiModifiedAt : undefined)
-    const gemini = trimRow(join([...prefix([geminiTitle], geminiModelName(data.geminiModel), agyState(data, geminiAt)),
+    const gemini = trimRow(join([...prefix(geminiTitle, geminiModelName(data.geminiModel), states.AGY, !!data.sys?.gemini?.count),
       ...(geminiReal
         ? [g5!, g7!, ...(data.geminiLimited ? [[{ text: t(data.lang, 'band.limit'), color: RED, bold: true }]] : []),
+          ...stateTag(states.AGY),
           ...(show('extras') ? [geminiToday(data)] : [])]
-        : [...(show('five') ? [geminiReset(data)] : []), ...(show('empty') ? [geminiToday(data)] : [])]),
+        : [...(show('five') ? [geminiReset(data)] : []), ...stateTag(states.AGY), ...(show('empty') ? [geminiToday(data)] : [])]),
       ...(show('extras') && data.geminiLastAt !== undefined
         ? [[dim(label(t(data.lang, 'band.last'))), { text: agoText(data.geminiLastAt, data.now, data.lang) }]] : []),
     ]))
-    const socios = trimRow(join([...prefix(sociosTitle, data.sociosModel ?? '—', agyState(data, data.sociosModelAt)),
+    const socios = trimRow(join([...prefix(sociosTitle, data.sociosModel ?? '—', states['AGY-O'], !!data.sys?.gemini?.count),
       ...(socios5 || socios7 ? [s5, s7] : show('empty') ? [[dim(t(data.lang, 'band.noData'))]] : []),
+      ...stateTag(states['AGY-O']),
     ]))
     const rows = [claude, codex, gemini, socios]
     if (rows.every(row => widthOf(row) <= columns)) {
@@ -279,7 +337,7 @@ export function bandRows(data: BandData, columns: number): Field[] {
           if (room > 0 && models?.length) row.push({ text: GAP }, dim(room === 1 ? '…' : clip(models.join('·'), room)))
         }
       }
-      return [...rows, activeRow(data, columns), turnoRow(data, columns), ...agentRows(data, columns)].filter(row => row.length)
+      return [...rows, activeRow(data, columns, states), turnoRow(data, columns, turn), ...agentRows(data, columns, states)].filter(row => row.length)
     }
   }
   return []

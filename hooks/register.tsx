@@ -279,7 +279,7 @@ function redraw($: EngineInterface) {
 function refreshAgents() {
   live.agents = agents.filter(agent => ['running', 'pending', 'waiting', 'idle'].includes(agent.status)).map(agent => {
     const loop = agentLoops.get(agent.id)
-    return { model: loop?.model, working: loop ? loop.turnId !== undefined : agent.status === 'running', task: agent.description, type: agent.type }
+    return { model: loop?.model, working: agent.status === 'running' || loop?.turnId !== undefined, task: agent.description, type: agent.type }
   })
 }
 
@@ -379,7 +379,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    live = { limits: [], now: 0 }
+    live = { limits: [], now: 0, sessionActive: true }
     mainTurn = newest = undefined
     probeAt = codexScanAt = codexPollAt = geminiUsageAt = -Infinity
     platform = undefined

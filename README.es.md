@@ -53,17 +53,25 @@ Si usas Claude Code para dirigir y le pasas trabajo a Codex y a Gemini, Claude e
 
 | Fila | Contenido |
 |---|---|
-| **CLAUDE** | Modelo, si está trabajando (●), % usado de 5 h y de la semana con su reinicio, y minutos estimados de caché de prompts. |
-| **CODEX** | Modelo, % usado de cada límite con su reinicio y tokens de hoy. Lee los registros locales de `~/.codex/sessions` (o `CODEX_HOME`). ● verde trabajando, ● gris abierto, ○ cerrado. |
+| **CLAUDE** | Modelo, estado activo (●), % usado de 5 h y de la semana con su reinicio, y minutos estimados de caché de prompts. |
+| **CODEX** | Modelo, % usado de cada límite con su reinicio y tokens de hoy. Lee los registros locales de `~/.codex/sessions` (o `CODEX_HOME`) y los subagentes de Codex en marcha. |
 | **AGY** | Grupo Gemini de Antigravity. Muestra el último modelo Gemini usado y el consumo del grupo en 5 h y en la semana. Si falta la lectura del cupo, usa una estimación del registro (≈). |
 | **AGY-O** | Grupo Claude y GPT de Antigravity. Muestra el último modelo usado en ese grupo (por ejemplo, Opus, Sonnet o GPT) y su consumo en 5 h y en la semana. |
 | **Activos** | Modelo principal y subagentes agrupados, más RAM y memoria de Claude, Codex y Gemini. |
 | **Turno** | Orden recomendado para dar trabajo ahora y zona de Claude: normal, delegar todo, reserva o crítico. |
 | **2º plano** | Una línea por subagente con modelo y tarea. Hasta 4 líneas y luego «+N más». |
 
+Cada fila muestra tres estados visuales, por orden de prioridad:
+
+- **Sin cupo** se aplica cuando un modelo queda fuera del reparto: cualquiera de sus dos ventanas al 97 % o más, o un corte 429 activo de Gemini en Antigravity. La reserva de coordinación de Claude (25 %) no lo apaga. El nombre y la etiqueta ⏸ sin cupo aparecen en gris oscuro atenuado, incluso con trabajo en marcha.
+- **Trabajando** se aplica a Claude durante toda la sesión activa y a cualquier miembro con un subagente en marcha atribuido. El nombre y la etiqueta ● trabajando aparecen en verde.
+- **Disponible** conserva los colores normales de la fila cuando el miembro tiene puntaje positivo y carece de trabajo activo.
+
+Los subagentes puente de Codex cuentan para Codex. Los de Gemini cuentan para AGY-O cuando la tarea muestra un modelo Claude o GPT en una selección explícita de modelo. Los demás cuentan para AGY. En terminales estrechas, el estado puede abreviarse a su símbolo o color.
+
 Los modelos de cada grupo de Antigravity comparten el mismo cupo. La banda consulta ambos grupos con `agy -p /usage` cada dos minutos (la consulta no gasta cuota). Si hay espacio, muestra en gris la lista de modelos de cada grupo.
 
-Las barras pasan de verde a ámbar y rojo cerca del límite. Avisa una vez por umbral, al 80 % y al 95 %, aunque la banda esté oculta.
+Las barras conservan sus colores por umbral (de verde a ámbar y rojo cerca del límite) con independencia del estado de la fila. Avisa una vez por umbral, al 80 % y al 95 %, aunque la banda esté oculta.
 
 ## Reparto por cupo
 

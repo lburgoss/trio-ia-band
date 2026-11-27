@@ -54,17 +54,25 @@ If you use Claude Code to orchestrate and hand work to Codex and Gemini, Claude 
 
 | Row | Content |
 |---|---|
-| **CLAUDE** | Model, whether it is working (●), 5-hour and weekly usage with reset time, and estimated prompt-cache minutes left. |
-| **CODEX** | Model, usage of each limit with reset time, and today's tokens. Reads local logs in `~/.codex/sessions` (or `CODEX_HOME`). Green ● working, grey ● open, ○ closed. |
+| **CLAUDE** | Model, active status (●), 5-hour and weekly usage with reset time, and estimated prompt-cache minutes left. |
+| **CODEX** | Model, usage of each limit with reset time, and today's tokens. Reads local logs in `~/.codex/sessions` (or `CODEX_HOME`) and running Codex subagents. |
 | **AGY** | Antigravity's Gemini group. Shows the last Gemini model used and the group's 5-hour and weekly usage. Falls back to a log estimate (≈) when quota readings are unavailable. |
 | **AGY-O** | Antigravity's Claude and GPT group. Shows the last model used in that group (such as Opus, Sonnet or GPT) and its 5-hour and weekly usage. |
 | **Active** | Main model and grouped subagents, plus RAM and the memory used by Claude, Codex and Gemini. |
 | **Turn** | Recommended order for new work right now, and Claude's zone: normal, delegate all, reserve or critical. |
 | **Background** | One line per subagent with model and task. Up to 4 lines, then "+N more". |
 
+Each row has three visual states, in priority order:
+
+- **No quota** applies when a model is cut off from the work split: either window at 97 % or more, or an active Antigravity Gemini 429. Claude's 25 % coordination reserve does not grey it out. The name and the ⏸ no quota label appear in dimmed dark grey, even during active work.
+- **Working** applies to Claude throughout the active session and to any member with an attributed running subagent. The name and the ● working label appear in green.
+- **Available** keeps the row's normal colors when the member has a positive score and no active work.
+
+Codex bridges count toward Codex. Gemini bridges count toward AGY-O when their task shows a Claude or GPT model in an explicit model override. Other Gemini bridges count toward AGY. Narrow layouts may abbreviate the status to its symbol or color.
+
 Models within each Antigravity group share the same quota. The band reads both groups with `agy -p /usage` every two minutes (the query uses no quota). Wide layouts dim the model list for each group.
 
-Bars go from green to amber to red near the limit. It warns once per threshold, at 80 % and 95 %, even with the band hidden.
+Bars keep their threshold colors (green to amber to red near the limit) regardless of row state. It warns once per threshold, at 80 % and 95 %, even with the band hidden.
 
 ## Quota-aware work split
 

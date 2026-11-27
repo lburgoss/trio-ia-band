@@ -1,6 +1,6 @@
 {
   "name": "trio-ia-band",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Claude Code band with Claude and Codex limits and two Antigravity quotas (Gemini and Claude/GPT), every background subagent and a quota-aware work split. English by default, adapts to your language.",
   "author": {
     "name": "trio-ia-band contributors"

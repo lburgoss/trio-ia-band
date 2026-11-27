@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { turno, contextoTurno } from '../hooks/turno'
+import { UMBRAL_SIN_CUPO, contextoTurno, esSinCupo, turno } from '../hooks/turno'
 import type { BandData } from '../types'
 
 const now = Date.parse('2026-11-26T22:00:00Z')
@@ -60,4 +60,19 @@ test('puntúa a AGY-O y avisa al alcanzar el 90 % en cualquiera de sus ventanas'
     expect(en).toContain(`AGY-O (Opus/Sonnet/GPT inside agy: coding and reviews): 5 h ${five} % used · resets in 2 h 0 min · week ${week} % · score ${score}`)
     expect(en).toContain('AGY-O almost out of quota: code with Codex, or with agy without --model (Gemini).')
   }
+})
+
+test('esSinCupo comparte el criterio exacto de exclusión de turno', () => {
+  expect(UMBRAL_SIN_CUPO).toBe(97)
+  expect(esSinCupo({ used: 96, at: now }, { used: 96, at: now })).toBe(false)
+  expect(esSinCupo(undefined, undefined)).toBe(false)
+  expect(esSinCupo({ used: 97, at: now }, undefined)).toBe(true)
+  expect(esSinCupo({ used: 100, at: now }, { used: 20, at: now })).toBe(true)
+  expect(esSinCupo({ used: 10, at: now }, { used: 97, at: now })).toBe(true)
+  expect(esSinCupo({ used: 10, at: now }, { used: 10, at: now }, true)).toBe(true)
+  const sinAgyO = turno({ ...base(20, 30, 40), sociosLimits: { five: { used: 100, at: now }, week: { used: 40, at: now } } })
+  const agyO = sinAgyO.puestos.find(p => p.nombre === 'AGY-O')
+  expect(agyO?.puntaje).toBe(0)
+  expect(agyO?.nota).toBe('sinCupo')
+  expect(sinAgyO.orden).not.toContain('AGY-O')
 })

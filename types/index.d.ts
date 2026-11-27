@@ -25,6 +25,7 @@ export type BandData = {
   limits: ClaudeLimit[]
   model?: string
   working?: boolean
+  sessionActive?: boolean
   lastRequestAt?: number
   /** Subagentes en marcha: modelo, si trabaja ahora, su tarea y su tipo (gemini, codex:codex-rescue…). */
   agents?: { model?: string; working: boolean; task?: string; type?: string }[]
