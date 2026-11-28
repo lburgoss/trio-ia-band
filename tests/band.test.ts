@@ -270,9 +270,9 @@ test('aplica los tres estados visuales por fila: sin cupo, trabajando y disponib
   expect(bg[0]?.[1]).toEqual({ text: '●', color: '#3FB950' })
   expect(bg[1]?.[1]).toEqual({ text: '⏸', color: '#484F58', dim: true })
 
-  // Semana ≥ 97 % también apaga la fila y la etiqueta en inglés dice «no quota».
+  // Semana ≥ 95 % también apaga la fila y la etiqueta en inglés dice «no quota».
   const weekOut: BandData = {
-    now, lang: 'en', limits: [{ kind: 'five_hour', percentUsed: 10 }, { kind: 'seven_day', percentUsed: 97 }],
+    now, lang: 'en', limits: [{ kind: 'five_hour', percentUsed: 10 }, { kind: 'seven_day', percentUsed: 95 }],
     model: 'claude-opus-5-5', working: true,
     agents: [{ type: 'gemini', working: true, task: 'Read docs' }],
     geminiLimits: { five: { used: 10, at: now }, week: { used: 10, at: now } },
@@ -292,7 +292,7 @@ test('aplica los tres estados visuales por fila: sin cupo, trabajando y disponib
   expect(memberStates({ now, limits: [], sessionActive: true }).Claude).toBe('working')
   // En la reserva de coordinación (75 %) Claude sigue trabajando; solo se apaga al quedarse sin cupo.
   expect(memberStates(data(75)).Claude).toBe('working')
-  expect(memberStates(data(97)).Claude).toBe('noQuota')
+  expect(memberStates(data(95)).Claude).toBe('noQuota')
   const sociosAvailable = { ...agotado, sociosLimits: { five: { used: 20, at: now } } }
   expect(memberStates(sociosAvailable)['AGY-O']).toBe('working')
   expect(line(bandRows(sociosAvailable, 180)[3])).toContain('● trabajando')

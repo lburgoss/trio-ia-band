@@ -25,12 +25,12 @@ export type Turno = { puestos: Puesto[]; orden: Miembro[]; zonaClaude: 'normal' 
 
 export const RESERVA = 25
 /** Umbral de uso (%) a partir del cual un miembro se considera sin cupo (puntaje 0, nota 'sinCupo'). */
-export const UMBRAL_SIN_CUPO = 97
+export const UMBRAL_SIN_CUPO = 95
 const MIN = 60_000
 
 /**
  * Criterio compartido de «sin cupo»: un miembro sale de los turnos si tiene un corte activo (429),
- * su ventana de 5 h alcanzó el umbral (≥ 97 %, incluido 100 %) o su semana alcanzó el umbral (≥ 97 %).
+ * su ventana de 5 h alcanzó el umbral (≥ 95 %, incluido 100 %) o su semana alcanzó el umbral (≥ 95 %).
  */
 export function esSinCupo(cinco: Reading | undefined, semana: Reading | undefined, cortado = false): boolean {
   return cortado || (cinco?.used ?? 0) >= UMBRAL_SIN_CUPO || (semana?.used ?? 0) >= UMBRAL_SIN_CUPO

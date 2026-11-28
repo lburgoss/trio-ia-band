@@ -14,6 +14,9 @@ import type { Lang } from './i18n'
 
 const TICK_MS = 1000
 const PROBE_MS = 5000
+// The Windows machine probe starts a PowerShell process that takes about 1.4 s.
+const MACHINE_MS = 30_000
+const AGY_SANDBOX_LOGS = 'C:/ProgramData/AgySandbox/logs'
 const CODEX_SCAN_MS = 60_000
 const CODEX_TAIL = 256 * 1024
 const STORE_KEY = 'enabled'
@@ -60,6 +63,7 @@ let sampling = false
 let machineBusy = false
 let platform: Platform | undefined
 let probeAt = -Infinity
+let machineAt = -Infinity
 let codexScanAt = -Infinity
 let codexPollAt = -Infinity
 let newest: string | undefined
@@ -199,23 +203,37 @@ async function refreshCodex($: EngineInterface, now: number) {
 // Gemini (Antigravity CLI «agy»): its log changes while it works; one .db per conversation.
 async function refreshGemini($: EngineInterface, now: number) {
   const home = await $.env.get('USERPROFILE') || await $.env.get('HOME')
-  if (!home) return
-  const base = `${home.replace(/\\/g, '/').replace(/\/+$/, '')}/.gemini/antigravity-cli`
-  const log = await $.fs.stat(`${base}/cli.log`).catch(() => undefined)
-  live.geminiModifiedAt = log?.kind === 'file' ? log.mtimeMs : undefined
-  const files = (await $.fs.list(`${base}/log`).catch(() => []))
-    .filter(f => f.kind === 'file' && yearOfLog(f.name) !== undefined && f.mtimeMs >= now - GEMINI_LOOKBACK)
+  const base = home && `${home.replace(/\\/g, '/').replace(/\/+$/, '')}/.gemini/antigravity-cli`
+  const sandbox = ((await $.env.get('AGY_SANDBOX_LOGS').catch(() => undefined))?.trim() || AGY_SANDBOX_LOGS)
+    .replace(/\\/g, '/')
+  const sandboxDir = /^(?:[a-z]:)?\/+$/i.test(sandbox) ? sandbox.replace(/\/+$/, '/') : sandbox.replace(/\/+$/, '')
+  const win = platform ? platform === 'win' : /windows/i.test(await $.env.get('OS').catch(() => '') ?? '')
+  const key = (dir: string) => win ? dir.toLowerCase() : dir
+  const log = base ? await $.fs.stat(`${base}/cli.log`).catch(() => undefined) : undefined
+  let modifiedAt = log?.kind === 'file' ? log.mtimeMs : undefined
+  const sandboxKey = key(sandboxDir)
+  const dirs = new Map<string, string>()
+  if (base) dirs.set(key(`${base}/log`), `${base}/log`)
+  if (!dirs.has(sandboxKey)) dirs.set(sandboxKey, sandboxDir)
   const seen = new Set<string>()
-  for (const file of files) {
-    const path = `${base}/log/${file.name}`
-    seen.add(path)
-    const known = geminiLogs.get(path)
-    if (known && known.size === file.size && known.mtimeMs === file.mtimeMs) continue
-    const offset = Math.max(0, file.size - GEMINI_TAIL)
-    const text = await $.fs.read(path, { offset, length: file.size - offset }).catch(() => undefined)
-    if (text === undefined) continue
-    geminiLogs.set(path, { size: file.size, mtimeMs: file.mtimeMs, parsed: parseGeminiLog(text, yearOfLog(file.name)!) })
+  for (const [dirKey, dir] of dirs) {
+    for (const file of await $.fs.list(dir).catch(() => [])) {
+      if (file.kind !== 'file') continue
+      const year = yearOfLog(file.name)
+      if (year === undefined) continue
+      if (dirKey === sandboxKey && file.mtimeMs > (modifiedAt ?? -Infinity)) modifiedAt = file.mtimeMs
+      if (file.mtimeMs < now - GEMINI_LOOKBACK) continue
+      const path = `${dir}${dir.endsWith('/') ? '' : '/'}${file.name}`
+      seen.add(path)
+      const known = geminiLogs.get(path)
+      if (known && known.size === file.size && known.mtimeMs === file.mtimeMs) continue
+      const offset = Math.max(0, file.size - GEMINI_TAIL)
+      const text = await $.fs.read(path, { offset, length: file.size - offset }).catch(() => undefined)
+      if (text === undefined) continue
+      geminiLogs.set(path, { size: file.size, mtimeMs: file.mtimeMs, parsed: parseGeminiLog(text, year) })
+    }
   }
+  live.geminiModifiedAt = modifiedAt
   for (const path of geminiLogs.keys()) if (!seen.has(path)) geminiLogs.delete(path)
   const start = new Date(now)
   start.setHours(0, 0, 0, 0)
@@ -304,12 +322,13 @@ async function sample($: EngineInterface) {
       const model = await $.session.model().catch(() => undefined)
       if (!mainTurn && model) live.model = model
     }
+    if (enabled && !machineBusy && now - machineAt >= MACHINE_MS) {
+      machineAt = now
+      machineBusy = true
+      void refreshMachine($).then(() => redraw($)).catch(() => undefined).finally(() => { machineBusy = false })
+    }
     if (enabled && now - probeAt >= PROBE_MS) {
       probeAt = now
-      if (!machineBusy) {
-        machineBusy = true
-        void refreshMachine($).then(() => redraw($)).catch(() => undefined).finally(() => { machineBusy = false })
-      }
       await refreshGemini($, now).catch(() => undefined)
       const usedSince = (live.geminiModifiedAt ?? -Infinity) > geminiUsageAt
       if (platform && !geminiUsageBusy && (now - geminiUsageAt >= GEMINI_USAGE_MS || (usedSince && now - geminiUsageAt >= GEMINI_USAGE_AFTER_USE_MS))) {
@@ -381,7 +400,7 @@ export const register: Register = (on, options) => {
     const started = await next(e)
     live = { limits: [], now: 0, sessionActive: true }
     mainTurn = newest = undefined
-    probeAt = codexScanAt = codexPollAt = geminiUsageAt = -Infinity
+    probeAt = machineAt = codexScanAt = codexPollAt = geminiUsageAt = -Infinity
     platform = undefined
     agents = []
     agentLoops.clear()

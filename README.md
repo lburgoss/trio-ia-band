@@ -56,7 +56,7 @@ If you use Claude Code to orchestrate and hand work to Codex and Gemini, Claude 
 |---|---|
 | **CLAUDE** | Model, active status (●), 5-hour and weekly usage with reset time, and estimated prompt-cache minutes left. |
 | **CODEX** | Model, usage of each limit with reset time, and today's tokens. Reads local logs in `~/.codex/sessions` (or `CODEX_HOME`) and running Codex subagents. |
-| **AGY** | Antigravity's Gemini group. Shows the last Gemini model used and the group's 5-hour and weekly usage. Falls back to a log estimate (≈) when quota readings are unavailable. |
+| **AGY** | Antigravity's Gemini group. Shows the last Gemini model used and the group's 5-hour and weekly usage. Falls back to a log estimate (≈) when quota readings are unavailable. Set `AGY_SANDBOX_LOGS` to override the isolated log directory (default: `C:/ProgramData/AgySandbox/logs`). |
 | **AGY-O** | Antigravity's Claude and GPT group. Shows the last model used in that group (such as Opus, Sonnet or GPT) and its 5-hour and weekly usage. |
 | **Active** | Main model and grouped subagents, plus RAM and the memory used by Claude, Codex and Gemini. |
 | **Turn** | Recommended order for new work right now, and Claude's zone: normal, delegate all, reserve or critical. |
@@ -64,7 +64,7 @@ If you use Claude Code to orchestrate and hand work to Codex and Gemini, Claude 
 
 Each row has three visual states, in priority order:
 
-- **No quota** applies when a model is cut off from the work split: either window at 97 % or more, or an active Antigravity Gemini 429. Claude's 25 % coordination reserve does not grey it out. The name and the ⏸ no quota label appear in dimmed dark grey, even during active work.
+- **No quota** applies when a model is cut off from the work split: either window at 95 % or more, or an active Antigravity Gemini 429. Claude's 25 % coordination reserve does not grey it out. The name and the ⏸ no quota label appear in dimmed dark grey, even during active work.
 - **Working** applies to Claude throughout the active session and to any member with an attributed running subagent. The name and the ● working label appear in green.
 - **Available** keeps the row's normal colors when the member has a positive score and no active work.
 
@@ -80,11 +80,11 @@ Each member gets a score:
 
 - **Free quota** in the 5-hour window. Claude keeps a **25 % reserve** to coordinate and review.
 - **Quota about to reset:** if the window resets within 60 minutes, free quota counts up to double, because it is lost if unused.
-- **The week rules:** with weekly usage at 85 % or more the score is multiplied by 0.3. At 97 % or after a rate-limit cut (429), the member leaves the split.
+- **The week rules:** with weekly usage at 85 % or more the score is multiplied by 0.3. At 95 % or after a rate-limit cut (429), the member leaves the split.
 
 | Claude's zone (5 h) | What Claude does |
 |---|---|
-| under 50 % | Normal split: Claude plans and reviews; Codex and Gemini code in parallel. |
+| under 50 % | Normal split: Claude plans and reviews; Codex and Gemini code in parallel. Anything under ~20 lines or 1–2 files Claude does itself: handing it off costs more. |
 | 50–75 % | Delegates all implementation and exploration. |
 | 75–90 % | Reserve: only coordinates and leaves long, self-contained jobs to Codex and Gemini, which keep running if Claude stops. |
 | 90 % or more | Critical: hands off everything pending and tells you when its window resets. |
@@ -135,7 +135,7 @@ New languages are one dictionary in `hooks/i18n.ts`: pull requests are welcome.
 
 ## Privacy
 
-Everything is computed on your machine. The band reads the limits Claude Code already knows, Codex's local files and the output of `agy -p /usage`. It sends nothing to any server and stores no keys.
+Everything is computed on your machine. The band reads the limits Claude Code already knows, Codex's local files, local Antigravity logs and the output of `agy -p /usage`. The band includes the logs in `AGY_SANDBOX_LOGS` if the directory exists and skips the directory if it is missing. It sends nothing to any server and stores no keys.
 
 ## Development
 

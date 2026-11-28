@@ -28,8 +28,10 @@ test('el bloque de turno sale en inglés por defecto y en español con lang es',
   expect(en).toContain('AGY (Gemini: reading, media, web): 5 h 40 % used · resets in 15 min · score 105 (quota about to reset: use it first)')
   expect(en).toContain('Priority for new work now: AGY > Codex > Claude > AGY-O.')
   expect(en).toContain('Claude < 50 %: normal split')
+  expect(en).toContain('Anything under ~20 lines or 1–2 files Claude does itself: handing it off costs more.')
   expect(en).not.toMatch(/Estado del equipo|Prioridad|puntaje|usado/)
   const es = contextoTurno({ ...base(20, 30, 40, 15), lang: 'es' })
+  expect(es).toContain('Lo menor de ~20 líneas o de 1–2 archivos lo hace Claude: delegarlo cuesta más.')
   expect(es.split('\n')[0]).toContain('Estado del equipo')
   expect(es).toContain('Claude: 5 h 20 % usado · se renueva en 2 h 0 min')
   expect(es).toContain('Prioridad para dar trabajo ahora: AGY > Codex > Claude > AGY-O.')
@@ -63,16 +65,29 @@ test('puntúa a AGY-O y avisa al alcanzar el 90 % en cualquiera de sus ventanas'
 })
 
 test('esSinCupo comparte el criterio exacto de exclusión de turno', () => {
-  expect(UMBRAL_SIN_CUPO).toBe(97)
-  expect(esSinCupo({ used: 96, at: now }, { used: 96, at: now })).toBe(false)
+  expect(UMBRAL_SIN_CUPO).toBe(95)
+  expect(esSinCupo({ used: 94.9, at: now }, { used: 94.9, at: now })).toBe(false)
   expect(esSinCupo(undefined, undefined)).toBe(false)
-  expect(esSinCupo({ used: 97, at: now }, undefined)).toBe(true)
+  expect(esSinCupo({ used: 95, at: now }, undefined)).toBe(true)
   expect(esSinCupo({ used: 100, at: now }, { used: 20, at: now })).toBe(true)
-  expect(esSinCupo({ used: 10, at: now }, { used: 97, at: now })).toBe(true)
+  expect(esSinCupo({ used: 10, at: now }, { used: 95, at: now })).toBe(true)
   expect(esSinCupo({ used: 10, at: now }, { used: 10, at: now }, true)).toBe(true)
   const sinAgyO = turno({ ...base(20, 30, 40), sociosLimits: { five: { used: 100, at: now }, week: { used: 40, at: now } } })
   const agyO = sinAgyO.puestos.find(p => p.nombre === 'AGY-O')
   expect(agyO?.puntaje).toBe(0)
   expect(agyO?.nota).toBe('sinCupo')
   expect(sinAgyO.orden).not.toContain('AGY-O')
+})
+
+test('una semana al 96,9 % deja a Codex sin cupo aunque su ventana de 5 h tenga margen', () => {
+  const data = { ...base(20, 30, 40), lang: 'es' as const, codex: {
+    five: { used: 30, at: now },
+    week: { used: 96.9, at: now },
+  } }
+  const result = turno(data)
+  const codex = result.puestos.find(p => p.nombre === 'Codex')
+  expect(codex?.puntaje).toBe(0)
+  expect(codex?.nota).toBe('sinCupo')
+  expect(result.orden).not.toContain('Codex')
+  expect(contextoTurno(data)).toContain('semana 97 % · puntaje 0 (sin cupo)')
 })

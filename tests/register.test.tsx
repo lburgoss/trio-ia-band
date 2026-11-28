@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { AgentInfo, On } from 'claude-code'
 import { codexDays } from '../hooks/codex'
+import { WIN_SYS } from '../hooks/lib/probe'
 
 const NOW = new Date(2030, 0, 7, 12).getTime()
 const START = { surface: 'terminal' as const, isInteractive: true, cwd: '/work' }
@@ -10,7 +11,7 @@ const view = (surface: 'terminal' | 'desktop') => ({
   props: { hasSurvey: false, isCollapsed: false, isWorking: false, bodyColumns: 180, maxRows: 10, scroll: { offset: 0, bodyRows: 10 }, view: {} },
 })
 
-function world(on: On, codexHome?: string, claudeUsed = 5, agents: AgentInfo[] = []) {
+function world(on: On, codexHome?: string, claudeUsed = 5, agents: AgentInfo[] = [], env: Record<string, string> = {}) {
   const cleared: (string | undefined)[] = []
   const store = new Map<string, unknown>()
   on('store.get', ($, e) => ({ value: store.get(e.key) }))
@@ -32,10 +33,16 @@ function world(on: On, codexHome?: string, claudeUsed = 5, agents: AgentInfo[] =
       rateLimits: [{ kind: 'five_hour', percentUsed: claudeUsed }, { kind: 'seven_day', percentUsed: 7 }],
     },
   }))
-  on('env.get', ($, e) => ({ value: e.name === 'OS' ? 'Windows_NT' : e.name === 'CODEX_HOME' ? codexHome : undefined }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: '{}', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('env.get', ($, e) => ({ value: env[e.name] ?? (e.name === 'OS' ? 'Windows_NT' : e.name === 'CODEX_HOME' ? codexHome : undefined) }))
+  const machine = { runs: 0 }
+  const agy = { usageRuns: 0 }
+  on('process.run', ($, e) => {
+    if (JSON.stringify(e.argv) === JSON.stringify(WIN_SYS)) machine.runs++
+    if (e.argv.includes('/usage')) agy.usageRuns++
+    return { value: { exitCode: 0, stdout: '{}', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
   on('agent.list', () => ({ value: agents }))
-  return { cleared, store }
+  return { cleared, store, machine, agy }
 }
 
 for (const surface of ['terminal', 'desktop'] as const) {
@@ -126,9 +133,9 @@ test('pinta en verde un subagente de Codex en marcha y apaga a Claude sin cupo',
   await band.unmount()
 })
 
-test('Codex consulta el stat cada 5 s y redescubre archivos cada 60 s', async ($, on) => {
+test('sondea la máquina cada 30 s y consulta Codex a los 5 s y 60 s', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  world(on, '/codex')
+  const { machine } = world(on, '/codex')
   const [day] = codexDays(NOW)
   const dir = `/codex/sessions/${day}`
   const path = `${dir}/rollout-test.jsonl`
@@ -171,16 +178,62 @@ test('Codex consulta el stat cada 5 s y redescubre archivos cada 60 s', async ($
   expect(await text()).toContain('5 %')
   await clock.advance(5000)
   expect(stats).toBe(1)
+  expect(machine.runs).toBe(1)
   expect(reads).toEqual([12])
   stamp += 6000
   await clock.advance(5000)
   expect(reads).toEqual([12, 25])
   expect(scans).toBe(1)
   expect(await text()).toContain('25 tokens')
-  await clock.advance(26_000)
+  await clock.advance(19_000)
+  expect(machine.runs).toBe(1)
+  await clock.advance(1000)
+  expect(machine.runs).toBe(2)
+  await clock.advance(6000)
   expect(await dot(1)).toBe('#8B949E')
   await clock.advance(24_000)
   expect(scans).toBe(2)
+  expect(machine.runs).toBe(3)
   expect(reads).toEqual([12, 25])
   await band.unmount()
+})
+
+test('un registro nuevo de AGY aislado adelanta la consulta de cupo a los 30 s', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const { agy } = world(on, undefined, 5, [], {
+    USERPROFILE: 'C:\\Users\\test',
+    AGY_SANDBOX_LOGS: 'D:\\AgySandbox\\logs\\',
+  })
+  const sandbox = 'd:/agysandbox/logs'
+  const name = 'cli-20300107_120005.log'
+  const log = 'I0107 12:00:05.000000      81 server.go:1883] Sending user message to conversation abc'
+  const normalize = (path: string) => path.replace(/\\/g, '/').toLowerCase()
+  const reads: string[] = []
+  let missing = true
+  let missingLists = 0
+  on('fs.list', ($, e) => {
+    if (normalize(e.path) !== sandbox) return { value: [] }
+    if (missing) {
+      missingLists++
+      throw new Error('ENOENT')
+    }
+    return { value: [{ name, kind: 'file', size: log.length, mtimeMs: NOW + 5000, isLink: false }] }
+  })
+  on('fs.stat', () => ({ value: { kind: 'file', size: 0, mtimeMs: NOW, isLink: false } }))
+  on('fs.read', ($, e) => {
+    reads.push(normalize(e.path))
+    return { value: log }
+  })
+
+  await $.session.start(START)
+  await clock.advance(5000)
+  expect(missingLists).toBe(2)
+  expect(agy.usageRuns).toBe(1)
+  expect(reads).toEqual([])
+  missing = false
+  await clock.advance(24_000)
+  expect(reads).toEqual([`${sandbox}/${name}`])
+  expect(agy.usageRuns).toBe(1)
+  await clock.advance(1000)
+  expect(agy.usageRuns).toBe(2)
 })

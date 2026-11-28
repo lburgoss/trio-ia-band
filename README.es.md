@@ -55,7 +55,7 @@ Si usas Claude Code para dirigir y le pasas trabajo a Codex y a Gemini, Claude e
 |---|---|
 | **CLAUDE** | Modelo, estado activo (●), % usado de 5 h y de la semana con su reinicio, y minutos estimados de caché de prompts. |
 | **CODEX** | Modelo, % usado de cada límite con su reinicio y tokens de hoy. Lee los registros locales de `~/.codex/sessions` (o `CODEX_HOME`) y los subagentes de Codex en marcha. |
-| **AGY** | Grupo Gemini de Antigravity. Muestra el último modelo Gemini usado y el consumo del grupo en 5 h y en la semana. Si falta la lectura del cupo, usa una estimación del registro (≈). |
+| **AGY** | Grupo Gemini de Antigravity. Muestra el último modelo Gemini usado y el consumo del grupo en 5 h y en la semana. Si falta la lectura del cupo, usa una estimación del registro (≈). Define `AGY_SANDBOX_LOGS` para cambiar la carpeta de registros aislados (por defecto, `C:/ProgramData/AgySandbox/logs`). |
 | **AGY-O** | Grupo Claude y GPT de Antigravity. Muestra el último modelo usado en ese grupo (por ejemplo, Opus, Sonnet o GPT) y su consumo en 5 h y en la semana. |
 | **Activos** | Modelo principal y subagentes agrupados, más RAM y memoria de Claude, Codex y Gemini. |
 | **Turno** | Orden recomendado para dar trabajo ahora y zona de Claude: normal, delegar todo, reserva o crítico. |
@@ -63,7 +63,7 @@ Si usas Claude Code para dirigir y le pasas trabajo a Codex y a Gemini, Claude e
 
 Cada fila muestra tres estados visuales, por orden de prioridad:
 
-- **Sin cupo** se aplica cuando un modelo queda fuera del reparto: cualquiera de sus dos ventanas al 97 % o más, o un corte 429 activo de Gemini en Antigravity. La reserva de coordinación de Claude (25 %) no lo apaga. El nombre y la etiqueta ⏸ sin cupo aparecen en gris oscuro atenuado, incluso con trabajo en marcha.
+- **Sin cupo** se aplica cuando un modelo queda fuera del reparto: cualquiera de sus dos ventanas al 95 % o más, o un corte 429 activo de Gemini en Antigravity. La reserva de coordinación de Claude (25 %) no lo apaga. El nombre y la etiqueta ⏸ sin cupo aparecen en gris oscuro atenuado, incluso con trabajo en marcha.
 - **Trabajando** se aplica a Claude durante toda la sesión activa y a cualquier miembro con un subagente en marcha atribuido. El nombre y la etiqueta ● trabajando aparecen en verde.
 - **Disponible** conserva los colores normales de la fila cuando el miembro tiene puntaje positivo y carece de trabajo activo.
 
@@ -79,11 +79,11 @@ Para cada uno calcula un puntaje:
 
 - **Cupo libre** de la ventana de 5 h. A Claude se le descuenta una **reserva del 25 %** para coordinar y revisar.
 - **Cupo por vencer:** si la ventana se renueva en 60 minutos o menos, el cupo libre vale hasta el doble, porque se pierde si no se usa.
-- **La semana manda:** con la semana en 85 % o más, el puntaje baja a 0,3. Con 97 % o un corte (429), sale del reparto.
+- **La semana manda:** con la semana en 85 % o más, el puntaje baja a 0,3. Con 95 % o un corte (429), sale del reparto.
 
 | Zona de Claude (5 h) | Qué hace Claude |
 |---|---|
-| menos de 50 % | Reparto normal: planea y revisa; Codex y Gemini programan en paralelo. |
+| menos de 50 % | Reparto normal: planea y revisa; Codex y Gemini programan en paralelo. Lo menor de ~20 líneas o de 1–2 archivos lo hace Claude: delegarlo cuesta más. |
 | 50–75 % | Delega toda implementación y exploración. |
 | 75–90 % | Reserva: solo coordina y deja trabajos largos a Codex y Gemini, que siguen aunque Claude pare. |
 | 90 % o más | Crítico: deja lo pendiente encargado y avisa la hora de renovación. |
@@ -127,7 +127,7 @@ Sin ellos, esas filas dicen «sin datos todavía» y el reparto les supone un 50
 
 ## Privacidad
 
-Todo se calcula en tu computadora. La banda lee los límites que Claude Code ya conoce, los archivos locales de Codex y la salida de `agy -p /usage`. No envía nada a ningún servidor ni guarda claves.
+Todo se calcula en tu computadora. La banda lee los límites que Claude Code ya conoce, los archivos locales de Codex, los registros locales de Antigravity y la salida de `agy -p /usage`. La banda también lee los registros de `AGY_SANDBOX_LOGS` si existe la carpeta y la omite si falta. No envía nada a ningún servidor ni guarda claves.
 
 ## Desarrollo
 
